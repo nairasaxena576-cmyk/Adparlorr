@@ -1,0 +1,312 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String           @id @default(uuid())
+  fullName            String
+  email               String           @unique
+  passwordHash        String
+  role                Role             @default(USER)
+  referralCode        String           @unique
+  sessionVersion      Int              @default(0)
+  balance             Decimal          @default(0) @db.Decimal(12, 2)
+  totalEarnings       Decimal          @default(0) @db.Decimal(12, 2)
+  totalDeposits       Decimal          @default(0) @db.Decimal(12, 2)
+  completedOrders     Int              @default(0)
+  mergeTriggered      Boolean          @default(false)
+  isMerged            Boolean          @default(false)
+  trainingCompletedAt DateTime?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  referralReceived    Referral?        @relation("ReferralReceived")
+  referralsMade       Referral[]       @relation("ReferralsMade")
+  taskSubmissions     TaskSubmission[]
+  transactions        Transaction[]
+  depositsMade        Deposit[]        @relation("DepositsMade")
+  depositsReviewed    Deposit[]        @relation("DepositsReviewed")
+  trainingProgress    UserTrainingProgress[]
+  lessonCompletions   UserLessonCompletion[]
+
+  @@index([email])
+}
+
+model Product {
+  id              String           @id @default(uuid())
+  displayOrder    Int              @unique
+  name            String
+  category        String
+  reward          Decimal          @db.Decimal(10, 2)
+  cost            Decimal          @db.Decimal(10, 2)
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  taskSubmissions TaskSubmission[]
+
+  @@index([isActive])
+}
+
+model TaskSubmission {
+  id           String   @id @default(uuid())
+  userId       String
+  productId    String
+  rewardAmount Decimal  @db.Decimal(10, 2)
+  costAmount   Decimal  @db.Decimal(10, 2)
+  createdAt    DateTime @default(now())
+  product      Product  @relation(fields: [productId], references: [id])
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([userId])
+}
+
+model Transaction {
+  id          String            @id @default(uuid())
+  userId      String
+  type        TransactionType
+  amount      Decimal           @db.Decimal(12, 2)
+  status      TransactionStatus @default(PENDING)
+  description String
+  createdAt   DateTime          @default(now())
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deposit     Deposit?
+
+  @@index([userId, createdAt])
+}
+
+enum CryptoAssetCode {
+  USDT
+  BTC
+  ETH
+}
+
+// Admin-configurable per-asset deposit settings. Fixed set of three assets
+// (USDT/BTC/ETH) as scoped — not an open-ended asset catalog.
+model CryptoAsset {
+  id        String          @id @default(uuid())
+  code      CryptoAssetCode @unique
+  address   String?
+  isEnabled Boolean         @default(false)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  deposits  Deposit[]
+
+  @@index([isEnabled])
+}
+
+enum DepositStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Deposit {
+  id            String          @id @default(uuid())
+  userId        String
+  user          User            @relation("DepositsMade", fields: [userId], references: [id], onDelete: Cascade)
+  assetCode     CryptoAssetCode
+  asset         CryptoAsset     @relation(fields: [assetCode], references: [code])
+  amount        Decimal         @db.Decimal(12, 2)
+  addressShown  String
+  status        DepositStatus   @default(PENDING)
+  transactionId String          @unique
+  transaction   Transaction     @relation(fields: [transactionId], references: [id])
+  reviewedById  String?
+  reviewedBy    User?           @relation("DepositsReviewed", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt    DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+model Referral {
+  id             String         @id @default(uuid())
+  referrerId     String
+  referredUserId String         @unique
+  status         ReferralStatus @default(PENDING)
+  createdAt      DateTime       @default(now())
+  referredUser   User           @relation("ReferralReceived", fields: [referredUserId], references: [id], onDelete: Cascade)
+  referrer       User           @relation("ReferralsMade", fields: [referrerId], references: [id], onDelete: Cascade)
+
+  @@index([referrerId])
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum TransactionType {
+  TASK_REWARD
+  DEPOSIT
+  WITHDRAW
+  ADMIN_CREDIT
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum ReferralStatus {
+  PENDING
+  ACTIVE
+}
+
+// Singleton row (application-enforced: services always get-or-create the
+// first row rather than relying on a fixed id) holding support-channel
+// configuration. Started with just the Telegram contact; a natural home for
+// other admin-configurable support settings later.
+model SupportSettings {
+  id                String   @id @default(uuid())
+  telegramUsername  String?
+  telegramEnabled   Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Admin-managed training courses. Structure is deliberately flat:
+// Course -> Chapters -> Lessons, plus one Assessment (with Questions/Answers)
+// per course. No modules/units/nested sections beyond this.
+//
+// trainingCompletedAt (on User) is the single existing source of truth the
+// deposit gate checks — it is never set directly by a client request. It is
+// only ever set by evaluateAndSetTrainingCompletion() in training.service.ts,
+// as a side effect of the backend scoring a passed assessment attempt for
+// every published+required course.
+// ---------------------------------------------------------------------------
+
+model TrainingCourse {
+  id           String   @id @default(uuid())
+  title        String
+  slug         String   @unique
+  description  String?
+  thumbnailUrl String?
+  isPublished  Boolean  @default(false)
+  isRequired   Boolean  @default(false)
+  order        Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  chapters   TrainingChapter[]
+  assessment TrainingAssessment?
+  progress   UserTrainingProgress[]
+
+  @@index([isPublished])
+}
+
+model TrainingChapter {
+  id          String   @id @default(uuid())
+  courseId    String
+  course      TrainingCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  order       Int      @default(0)
+  isPublished Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lessons TrainingLesson[]
+
+  @@index([courseId])
+}
+
+model TrainingLesson {
+  id          String   @id @default(uuid())
+  chapterId   String
+  chapter     TrainingChapter @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  title       String
+  content     String
+  videoUrl    String?
+  order       Int      @default(0)
+  isPublished Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  completions UserLessonCompletion[]
+
+  @@index([chapterId])
+}
+
+model TrainingAssessment {
+  id           String   @id @default(uuid())
+  courseId     String   @unique
+  course       TrainingCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title        String
+  passingScore Int      @default(70)
+  isPublished  Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  questions TrainingQuestion[]
+}
+
+model TrainingQuestion {
+  id           String   @id @default(uuid())
+  assessmentId String
+  assessment   TrainingAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  question     String
+  order        Int      @default(0)
+  points       Int      @default(1)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  answers TrainingAnswer[]
+
+  @@index([assessmentId])
+}
+
+model TrainingAnswer {
+  id         String   @id @default(uuid())
+  questionId String
+  question   TrainingQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  answer     String
+  isCorrect  Boolean  @default(false)
+  order      Int      @default(0)
+
+  @@index([questionId])
+}
+
+// One row per user per course: latest assessment outcome. Attempts may be
+// retaken (no attempt-history table by design — keeps this minimal); each
+// submission overwrites score/passed and increments attempts.
+model UserTrainingProgress {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId    String
+  course      TrainingCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  score       Int?
+  passed      Boolean  @default(false)
+  attempts    Int      @default(0)
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, courseId])
+  @@index([courseId])
+}
+
+// Which lessons a user has marked complete — drives the chapter/lesson
+// progress UI and the "required lessons completed" part of the completion
+// rule. Editing a lesson's content/title/order never touches this table, so
+// existing progress survives ordinary content edits.
+model UserLessonCompletion {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId    String
+  lesson      TrainingLesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  completedAt DateTime @default(now())
+
+  @@unique([userId, lessonId])
+}

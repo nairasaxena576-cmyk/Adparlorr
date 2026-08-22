@@ -1,0 +1,167 @@
+import { describe, it, expect } from 'vitest';
+import request from 'supertest';
+import { app, registerAndLogin, createAdminAndLogin, createFixtureCourse } from './helpers';
+
+async function enableUsdtAndCompleteTraining(
+  user: Awaited<ReturnType<typeof registerAndLogin>>,
+  admin: Awaited<ReturnType<typeof createAdminAndLogin>>,
+  course: Awaited<ReturnType<typeof createFixtureCourse>>
+) {
+  await admin.agent
+    .put('/api/admin/crypto-assets/USDT')
+    .set('X-CSRF-Token', admin.csrfToken)
+    .send({ address: 'TAddressExample', isEnabled: true });
+
+  const [q1, q2] = course.assessment!.questions;
+  const correct1 = q1.answers.find((a) => a.isCorrect)!;
+  const correct2 = q2.answers.find((a) => a.isCorrect)!;
+
+  await user.agent
+    .post(`/api/training/courses/${course.id}/assessment/submit`)
+    .set('X-CSRF-Token', user.csrfToken)
+    .send({
+      answers: [
+        { questionId: q1.id, answerId: correct1.id },
+        { questionId: q2.id, answerId: correct2.id },
+      ],
+    });
+}
+
+describe('training assessment (customer)', () => {
+  it('returns questions without exposing which answer is correct', async () => {
+    const course = await createFixtureCourse();
+    const { agent } = await registerAndLogin();
+
+    const res = await agent.get(`/api/training/courses/${course.id}/assessment`);
+    expect(res.status).toBe(200);
+    const raw = JSON.stringify(res.body);
+    expect(raw).not.toContain('isCorrect');
+  });
+
+  it('scores strictly server-side — a wrong answer cannot be disguised as correct by the client', async () => {
+    const course = await createFixtureCourse();
+    const { agent, csrfToken } = await registerAndLogin();
+    const [q1, q2] = course.assessment!.questions;
+    const wrong1 = q1.answers.find((a) => !a.isCorrect)!;
+    const correct2 = q2.answers.find((a) => a.isCorrect)!;
+
+    const res = await agent
+      .post(`/api/training/courses/${course.id}/assessment/submit`)
+      .set('X-CSRF-Token', csrfToken)
+      .send({
+        answers: [
+          { questionId: q1.id, answerId: wrong1.id },
+          { questionId: q2.id, answerId: correct2.id },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.score).toBe(50);
+    expect(res.body.data.passed).toBe(false);
+  });
+
+  it('does not set trainingCompletedAt on a failed assessment', async () => {
+    const course = await createFixtureCourse();
+    const { agent, csrfToken } = await registerAndLogin();
+    const [q1, q2] = course.assessment!.questions;
+    const wrong1 = q1.answers.find((a) => !a.isCorrect)!;
+    const wrong2 = q2.answers.find((a) => !a.isCorrect)!;
+
+    const res = await agent
+      .post(`/api/training/courses/${course.id}/assessment/submit`)
+      .set('X-CSRF-Token', csrfToken)
+      .send({
+        answers: [
+          { questionId: q1.id, answerId: wrong1.id },
+          { questionId: q2.id, answerId: wrong2.id },
+        ],
+      });
+
+    expect(res.body.data.passed).toBe(false);
+    expect(res.body.data.user.trainingCompletedAt).toBeNull();
+
+    const me = await agent.get('/api/auth/me');
+    expect(me.body.data.user.trainingCompletedAt).toBeNull();
+  });
+
+  it('sets trainingCompletedAt once the assessment is passed', async () => {
+    const course = await createFixtureCourse();
+    const { agent, csrfToken } = await registerAndLogin();
+    const [q1, q2] = course.assessment!.questions;
+    const correct1 = q1.answers.find((a) => a.isCorrect)!;
+    const correct2 = q2.answers.find((a) => a.isCorrect)!;
+
+    const res = await agent
+      .post(`/api/training/courses/${course.id}/assessment/submit`)
+      .set('X-CSRF-Token', csrfToken)
+      .send({
+        answers: [
+          { questionId: q1.id, answerId: correct1.id },
+          { questionId: q2.id, answerId: correct2.id },
+        ],
+      });
+
+    expect(res.body.data.score).toBe(100);
+    expect(res.body.data.passed).toBe(true);
+    expect(res.body.data.user.trainingCompletedAt).not.toBeNull();
+  });
+
+  it('cannot be bypassed by direct API request — the blind-complete endpoint no longer exists', async () => {
+    const { agent, csrfToken } = await registerAndLogin();
+    const res = await agent.post('/api/training/complete').set('X-CSRF-Token', csrfToken);
+    expect(res.status).toBe(404);
+  });
+
+  it('rejects a submission with an answerId that does not belong to the question', async () => {
+    const course = await createFixtureCourse();
+    const { agent, csrfToken } = await registerAndLogin();
+    const [q1, q2] = course.assessment!.questions;
+
+    const res = await agent
+      .post(`/api/training/courses/${course.id}/assessment/submit`)
+      .set('X-CSRF-Token', csrfToken)
+      .send({
+        answers: [
+          { questionId: q1.id, answerId: q2.answers[0].id }, // answer belongs to the other question
+          { questionId: q2.id, answerId: q2.answers[0].id },
+        ],
+      });
+    expect(res.status).toBe(400);
+  });
+
+  it('deposit stays blocked before training is completed', async () => {
+    const admin = await createAdminAndLogin();
+    await admin.agent
+      .put('/api/admin/crypto-assets/USDT')
+      .set('X-CSRF-Token', admin.csrfToken)
+      .send({ address: 'TAddressExample', isEnabled: true });
+
+    const { agent, csrfToken } = await registerAndLogin();
+    const res = await agent
+      .post('/api/wallet/deposit')
+      .set('X-CSRF-Token', csrfToken)
+      .send({ assetCode: 'USDT', amount: 25 });
+    expect(res.status).toBe(403);
+  });
+
+  it('deposit becomes available after passing the required course assessment', async () => {
+    const admin = await createAdminAndLogin();
+    const course = await createFixtureCourse();
+    const user = await registerAndLogin();
+
+    await enableUsdtAndCompleteTraining(user, admin, course);
+
+    const res = await user.agent
+      .post('/api/wallet/deposit')
+      .set('X-CSRF-Token', user.csrfToken)
+      .send({ assetCode: 'USDT', amount: 25 });
+    expect(res.status).toBe(201);
+    expect(res.body.data.deposit.status).toBe('PENDING');
+  });
+
+  it('requires authentication', async () => {
+    const course = await createFixtureCourse();
+    const res = await request(app).get(`/api/training/courses/${course.id}/assessment`);
+    expect(res.status).toBe(401);
+  });
+});
