@@ -20,6 +20,10 @@ export default defineConfig({
     env: {
       NODE_ENV: 'test',
       DATABASE_URL: deriveTestDatabaseUrl(),
+      // Real (pre-override) app DATABASE_URL, carried through only so
+      // tests/setup.ts can verify the test database isn't literally the
+      // same database as production — never used to open a connection.
+      APP_DATABASE_URL_FOR_SAFETY_CHECK: process.env.DATABASE_URL ?? '',
       // Exercises the exact same "first N eligible products" workbench
       // logic as production (default 45) with a much smaller, fast,
       // deterministic N — no other test depends on this value.
