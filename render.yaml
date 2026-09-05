@@ -1,9 +1,3 @@
-databases:
-  - name: adparlorr-db
-    databaseName: adparlorr
-    user: adparlorr
-    plan: free
-
 services:
   - type: web
     name: adparlorr-backend
@@ -15,10 +9,10 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # Supabase Postgres — Session pooler connection string, port 5432.
+      # Set manually in Render's dashboard, never committed.
       - key: DATABASE_URL
-        fromDatabase:
-          name: adparlorr-db
-          property: connectionString
+        sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_EXPIRES_IN
