@@ -8,5 +8,6 @@ export async function listProducts() {
     category: p.category,
     reward: Number(p.reward),
     cost: Number(p.cost),
+    imageUrl: p.imageUrl,
   }));
 }

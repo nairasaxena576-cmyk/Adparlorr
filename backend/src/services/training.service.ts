@@ -5,10 +5,13 @@ import { AppError } from '../utils/AppError';
 import { toSafeUser, type SafeUser } from './auth.service';
 
 /**
- * The single place that is allowed to set User.trainingCompletedAt — the
- * source of truth the deposit gate checks. Never settable directly by a
- * client request; only called as a side effect of the backend scoring a
- * passed assessment (see trainingAssessment.service.ts submitAssessment).
+ * DEPRECATED: This function previously set User.trainingCompletedAt but is no longer
+ * used in the current Adparlorr customer workflow. The new product-image training
+ * task system (see trainingTaskCompletion.service.ts) is now the authoritative
+ * source for training completion status.
+ *
+ * Preserved for backward compatibility only. Does not affect the deposit gate
+ * which now relies solely on the training task system.
  *
  * A user is "training complete" once every published + required course has
  * a passed UserTrainingProgress row for them. With only one required course

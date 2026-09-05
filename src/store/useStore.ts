@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import { api, ApiError } from '@/lib/api';
 import type {
   User,
-  Product,
   TaskSubmission,
   Transaction,
   ReferralEntry,
@@ -19,6 +18,16 @@ import type {
   AssessmentResult,
   AdminCourseListItem,
   AdminCourseDetail,
+  CustomerTrainingTask,
+  TrainingTaskProgress,
+  SubmitTrainingTaskResult,
+  AdminTrainingTask,
+  AdminTrainingTaskSubmission,
+  TrainingTaskSubmissionStatus,
+  AdminProduct,
+  WorkbenchState,
+  WorkbenchReadiness,
+  SubmitWorkbenchResult,
 } from '@/types';
 
 type AuthStatus = 'idle' | 'loading' | 'authenticated' | 'unauthenticated';
@@ -38,7 +47,7 @@ interface AppState {
   authStatus: AuthStatus;
   currentUser: User | null;
 
-  products: Product[];
+  workbench: WorkbenchState | null;
   submissions: TaskSubmission[];
   transactions: Transaction[];
   referralsData: ReferralsData | null;
@@ -57,6 +66,14 @@ interface AppState {
   adminTrainingCourses: AdminCourseListItem[];
   adminTrainingCourseDetail: AdminCourseDetail | null;
 
+  trainingTasks: CustomerTrainingTask[];
+  trainingTaskProgress: TrainingTaskProgress | null;
+  adminTrainingTasks: AdminTrainingTask[];
+  adminTrainingSubmissions: AdminTrainingTaskSubmission[];
+
+  adminProducts: AdminProduct[];
+  adminWorkbenchReadiness: WorkbenchReadiness | null;
+
   bootstrapAuth: () => Promise<void>;
   register: (data: {
     fullName: string;
@@ -68,9 +85,13 @@ interface AppState {
   logout: () => Promise<void>;
   getCurrentUser: () => User | null;
 
-  fetchProducts: () => Promise<void>;
+  fetchWorkbench: () => Promise<void>;
   fetchOrders: () => Promise<void>;
-  submitProduct: (productId: string) => Promise<{ ok: boolean; error?: string; mergeTriggered?: boolean }>;
+  submitWorkbenchProduct: (
+    productId: string
+  ) => Promise<{ ok: boolean; error?: string; result?: SubmitWorkbenchResult }>;
+  // Demo-only shortfall resolution — never calls the real deposit API.
+  resolveDemoShortfall: () => Promise<ActionResult>;
 
   fetchTransactions: () => Promise<void>;
   fetchCryptoAssets: () => Promise<void>;
@@ -134,6 +155,33 @@ interface AppState {
   deleteAdminQuestion: (questionId: string) => Promise<ActionResult>;
   reorderAdminQuestion: (questionId: string, direction: 'up' | 'down') => Promise<ActionResult>;
   resetTrainingProgress: (courseId: string, userId?: string) => Promise<ActionResult>;
+
+  // ---- Training tasks (product-image identification, customer) ----
+  fetchTrainingTasks: () => Promise<void>;
+  fetchTrainingTaskProgress: () => Promise<void>;
+  submitTrainingTask: (
+    taskId: string,
+    answer: string
+  ) => Promise<{ ok: boolean; error?: string; result?: SubmitTrainingTaskResult }>;
+
+  // ---- Training tasks (admin) ----
+  fetchAdminTrainingTasks: () => Promise<void>;
+  createAdminTrainingTask: (input: Record<string, unknown>) => Promise<ActionResult>;
+  updateAdminTrainingTask: (taskId: string, input: Record<string, unknown>) => Promise<ActionResult>;
+  deleteAdminTrainingTask: (taskId: string) => Promise<ActionResult>;
+  reorderAdminTrainingTask: (taskId: string, direction: 'up' | 'down') => Promise<ActionResult>;
+  uploadAdminTrainingTaskImage: (file: File) => Promise<{ ok: boolean; error?: string; imageUrl?: string }>;
+  fetchAdminTrainingSubmissions: (status?: TrainingTaskSubmissionStatus) => Promise<void>;
+  approveAdminTrainingSubmission: (submissionId: string) => Promise<ActionResult>;
+  rejectAdminTrainingSubmission: (submissionId: string, rejectionReason: string) => Promise<ActionResult>;
+
+  // ---- Products (admin) ----
+  fetchAdminProducts: () => Promise<void>;
+  createAdminProduct: (input: Record<string, unknown>) => Promise<ActionResult>;
+  updateAdminProduct: (productId: string, input: Record<string, unknown>) => Promise<ActionResult>;
+  deleteAdminProduct: (productId: string) => Promise<ActionResult>;
+  reorderAdminProduct: (productId: string, direction: 'up' | 'down') => Promise<ActionResult>;
+  uploadAdminProductImage: (file: File) => Promise<{ ok: boolean; error?: string; imageUrl?: string }>;
 }
 
 function errorMessage(err: unknown, fallback: string): string {
@@ -143,7 +191,7 @@ function errorMessage(err: unknown, fallback: string): string {
 export const useStore = create<AppState>()((set, get) => ({
   authStatus: 'idle',
   currentUser: null,
-  products: [],
+  workbench: null,
   submissions: [],
   transactions: [],
   referralsData: null,
@@ -160,6 +208,14 @@ export const useStore = create<AppState>()((set, get) => ({
   lastAssessmentResult: null,
   adminTrainingCourses: [],
   adminTrainingCourseDetail: null,
+
+  trainingTasks: [],
+  trainingTaskProgress: null,
+  adminTrainingTasks: [],
+  adminTrainingSubmissions: [],
+
+  adminProducts: [],
+  adminWorkbenchReadiness: null,
 
   bootstrapAuth: async () => {
     set({ authStatus: 'loading' });
@@ -201,6 +257,7 @@ export const useStore = create<AppState>()((set, get) => ({
     set({
       currentUser: null,
       authStatus: 'unauthenticated',
+      workbench: null,
       submissions: [],
       transactions: [],
       referralsData: null,
@@ -216,14 +273,20 @@ export const useStore = create<AppState>()((set, get) => ({
       lastAssessmentResult: null,
       adminTrainingCourses: [],
       adminTrainingCourseDetail: null,
+      trainingTasks: [],
+      trainingTaskProgress: null,
+      adminTrainingTasks: [],
+      adminTrainingSubmissions: [],
+      adminProducts: [],
+      adminWorkbenchReadiness: null,
     });
   },
 
   getCurrentUser: () => get().currentUser,
 
-  fetchProducts: async () => {
-    const { data } = await api.get<{ products: Product[] }>('/api/products');
-    set({ products: data.products });
+  fetchWorkbench: async () => {
+    const { data } = await api.get<{ workbench: WorkbenchState }>('/api/orders/workbench');
+    set({ workbench: data.workbench });
   },
 
   fetchOrders: async () => {
@@ -231,20 +294,25 @@ export const useStore = create<AppState>()((set, get) => ({
     set({ submissions: data.submissions });
   },
 
-  submitProduct: async (productId) => {
+  submitWorkbenchProduct: async (productId) => {
     try {
-      const { data } = await api.post<{
-        user: User;
-        mergeTriggered: boolean;
-        submission: TaskSubmission;
-      }>('/api/orders', { productId });
-      set((state) => ({
-        currentUser: data.user,
-        submissions: [data.submission, ...state.submissions],
-      }));
-      return { ok: true, mergeTriggered: data.mergeTriggered };
+      const { data } = await api.post<SubmitWorkbenchResult>('/api/orders', { productId });
+      set({ currentUser: data.user, workbench: data.workbench });
+      return { ok: true, result: data };
     } catch (err) {
       return { ok: false, error: errorMessage(err, 'Submission failed.') };
+    }
+  },
+
+  resolveDemoShortfall: async () => {
+    try {
+      const { data } = await api.post<{ user: User; workbench: WorkbenchState }>(
+        '/api/orders/resolve-demo-shortfall'
+      );
+      set({ currentUser: data.user, workbench: data.workbench });
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err, 'Failed to resolve the demo shortfall.') };
     }
   },
 
@@ -612,6 +680,174 @@ export const useStore = create<AppState>()((set, get) => ({
       return { ok: true };
     } catch (err) {
       return { ok: false, error: errorMessage(err, 'Failed to reset progress.') };
+    }
+  },
+
+  // ---- Training tasks (customer) ----
+
+  fetchTrainingTasks: async () => {
+    const { data } = await api.get<{ tasks: CustomerTrainingTask[] }>('/api/training/tasks');
+    set({ trainingTasks: data.tasks });
+  },
+
+  fetchTrainingTaskProgress: async () => {
+    const { data } = await api.get<TrainingTaskProgress>('/api/training/progress');
+    set({ trainingTaskProgress: data });
+  },
+
+  submitTrainingTask: async (taskId, answer) => {
+    try {
+      const { data } = await api.post<SubmitTrainingTaskResult>(`/api/training/tasks/${taskId}/submit`, {
+        answer,
+      });
+      await Promise.all([get().fetchTrainingTasks(), get().fetchTrainingTaskProgress()]);
+      return { ok: true, result: data };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err, 'Failed to submit your answer.') };
+    }
+  },
+
+  // ---- Training tasks (admin) ----
+
+  fetchAdminTrainingTasks: async () => {
+    const { data } = await api.get<{ tasks: AdminTrainingTask[] }>('/api/admin/training/tasks');
+    set({ adminTrainingTasks: data.tasks });
+  },
+
+  createAdminTrainingTask: async (input) => {
+    try {
+      await api.post('/api/admin/training/tasks', input);
+      await get().fetchAdminTrainingTasks();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err, 'Failed to create task.') };
+    }
+  },
+
+  updateAdminTrainingTask: async (taskId, input) => {
+    try {
+      await api.put(`/api/admin/training/tasks/${taskId}`, input);
+      await get().fetchAdminTrainingTasks();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err, 'Failed to update task.') };
+    }
+  },
+
+  deleteAdminTrainingTask: async (taskId) => {
+    try {
+      await api.delete(`/api/admin/training/tasks/${taskId}`);
+      await get().fetchAdminTrainingTasks();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err, 'Failed to delete task.') };
+    }
+  },
+
+  reorderAdminTrainingTask: async (taskId, direction) => {
+    try {
+      await api.post(`/api/admin/training/tasks/${taskId}/reorder`, { direction });
+      await get().fetchAdminTrainingTasks();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err, 'Failed to reorder task.') };
+    }
+  },
+
+  uploadAdminTrainingTaskImage: async (file) => {
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const { data } = await api.upload<{ imageUrl: string }>('/api/admin/training/tasks/upload-image', formData);
+      return { ok: true, imageUrl: data.imageUrl };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err, 'Failed to upload image.') };
+    }
+  },
+
+  fetchAdminTrainingSubmissions: async (status) => {
+    const query = status ? `?status=${status}` : '';
+    const { data } = await api.get<{ submissions: AdminTrainingTaskSubmission[] }>(
+      `/api/admin/training/submissions${query}`
+    );
+    set({ adminTrainingSubmissions: data.submissions });
+  },
+
+  approveAdminTrainingSubmission: async (submissionId) => {
+    try {
+      await api.post(`/api/admin/training/submissions/${submissionId}/approve`);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err, 'Failed to approve submission.') };
+    }
+  },
+
+  rejectAdminTrainingSubmission: async (submissionId, rejectionReason) => {
+    try {
+      await api.post(`/api/admin/training/submissions/${submissionId}/reject`, { rejectionReason });
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err, 'Failed to reject submission.') };
+    }
+  },
+
+  // ---- Products (admin) ----
+
+  fetchAdminProducts: async () => {
+    const { data } = await api.get<{ products: AdminProduct[]; workbenchReadiness: WorkbenchReadiness }>(
+      '/api/admin/products'
+    );
+    set({ adminProducts: data.products, adminWorkbenchReadiness: data.workbenchReadiness });
+  },
+
+  createAdminProduct: async (input) => {
+    try {
+      await api.post('/api/admin/products', input);
+      await get().fetchAdminProducts();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err, 'Failed to create product.') };
+    }
+  },
+
+  updateAdminProduct: async (productId, input) => {
+    try {
+      await api.put(`/api/admin/products/${productId}`, input);
+      await get().fetchAdminProducts();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err, 'Failed to update product.') };
+    }
+  },
+
+  deleteAdminProduct: async (productId) => {
+    try {
+      await api.delete(`/api/admin/products/${productId}`);
+      await get().fetchAdminProducts();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err, 'Failed to delete product.') };
+    }
+  },
+
+  reorderAdminProduct: async (productId, direction) => {
+    try {
+      await api.post(`/api/admin/products/${productId}/reorder`, { direction });
+      await get().fetchAdminProducts();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err, 'Failed to reorder product.') };
+    }
+  },
+
+  uploadAdminProductImage: async (file) => {
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const { data } = await api.upload<{ imageUrl: string }>('/api/admin/products/upload-image', formData);
+      return { ok: true, imageUrl: data.imageUrl };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err, 'Failed to upload image.') };
     }
   },
 }));

@@ -15,7 +15,6 @@ import {
 } from '../repositories/trainingAssessment.repository';
 import { upsertProgressResult } from '../repositories/trainingProgress.repository';
 import { toSafeUser, type SafeUser } from './auth.service';
-import { evaluateAndSetTrainingCompletion } from './training.service';
 
 async function requirePublishedCourse(courseId: string) {
   const course = await findPublishedCourseWithContent(courseId);
@@ -97,7 +96,7 @@ export async function submitAssessmentForCustomer(
   await upsertProgressResult(userId, courseId, { score, passed });
 
   const user = passed
-    ? await evaluateAndSetTrainingCompletion(userId)
+    ? toSafeUser((await findUserById(userId))!)
     : toSafeUser((await findUserById(userId))!);
 
   return { score, passingScore: assessment.passingScore, passed, user };

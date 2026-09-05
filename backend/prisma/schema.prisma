@@ -16,6 +16,12 @@ model User {
   referralCode        String           @unique
   sessionVersion      Int              @default(0)
   balance             Decimal          @default(0) @db.Decimal(12, 2)
+  // Demo/simulation-only ledger for the 45-product workbench — entirely
+  // separate from `balance`, which is the real Wallet/crypto-deposit
+  // balance. Workbench commission/price math reads and writes only this
+  // field; the real Deposit/approval flow never touches it, and vice
+  // versa. See order.service.ts.
+  workbenchBalance    Decimal          @default(0) @db.Decimal(12, 2)
   totalEarnings       Decimal          @default(0) @db.Decimal(12, 2)
   totalDeposits       Decimal          @default(0) @db.Decimal(12, 2)
   completedOrders     Int              @default(0)
@@ -33,6 +39,9 @@ model User {
   trainingProgress    UserTrainingProgress[]
   lessonCompletions   UserLessonCompletion[]
 
+  trainingTaskSubmissions         TrainingTaskSubmission[] @relation("TrainingTaskSubmissionsByUser")
+  trainingTaskSubmissionsReviewed TrainingTaskSubmission[] @relation("TrainingTaskSubmissionsReviewed")
+
   @@index([email])
 }
 
@@ -43,6 +52,14 @@ model Product {
   category        String
   reward          Decimal          @db.Decimal(10, 2)
   cost            Decimal          @db.Decimal(10, 2)
+  // Admin-set product value used for the workbench's commission math
+  // (commission = price * 1%, or * 10% for a merged event) — see
+  // order.service.ts. Independent of reward/cost, which predate the
+  // workbench redesign and are no longer used to compute commission.
+  // Defaults to 0: a product only appears in the customer workbench once
+  // an admin gives it a real price via Product Management.
+  price           Decimal          @default(0) @db.Decimal(12, 2)
+  imageUrl        String?
   isActive        Boolean          @default(true)
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
@@ -57,6 +74,10 @@ model TaskSubmission {
   productId    String
   rewardAmount Decimal  @db.Decimal(10, 2)
   costAmount   Decimal  @db.Decimal(10, 2)
+  // True when this row was created as part of a merged event (see
+  // evaluateMergeEvent in order.service.ts) — lets the Records page label
+  // historical rows Normal vs Merged without re-deriving the event.
+  isMergedOrder Boolean @default(false)
   createdAt    DateTime @default(now())
   product      Product  @relation(fields: [productId], references: [id])
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -174,15 +195,27 @@ model SupportSettings {
 }
 
 // ---------------------------------------------------------------------------
-// Admin-managed training courses. Structure is deliberately flat:
-// Course -> Chapters -> Lessons, plus one Assessment (with Questions/Answers)
-// per course. No modules/units/nested sections beyond this.
+// DEPRECATED (kept in place, unused): admin-managed training courses.
+// Structure is deliberately flat: Course -> Chapters -> Lessons, plus one
+// Assessment (with Questions/Answers) per course. No modules/units/nested
+// sections beyond this.
 //
-// trainingCompletedAt (on User) is the single existing source of truth the
-// deposit gate checks — it is never set directly by a client request. It is
-// only ever set by evaluateAndSetTrainingCompletion() in training.service.ts,
-// as a side effect of the backend scoring a passed assessment attempt for
-// every published+required course.
+// Superseded by TrainingTask / TrainingTaskSubmission below — the simple
+// product-image-identification training system. These models and their
+// tables are left in place on purpose (not dropped) because the migration
+// that created them is already applied to a live database and nothing here
+// currently writes to them; dropping is a separate, deliberate decision for
+// later, not a side effect of this change. Nothing in the app routes to
+// these anymore.
+//
+// trainingCompletedAt (on User) was the single source of truth the deposit
+// gate checks — it is never set directly by a client request. It was only
+// ever set by evaluateAndSetTrainingCompletion() in training.service.ts, as
+// a side effect of the backend scoring a passed assessment attempt for every
+// published+required course. That function is untouched and still callable,
+// but nothing in the current app calls it anymore — see
+// trainingTaskCompletion.service.ts for the function that now writes
+// trainingCompletedAt in practice.
 // ---------------------------------------------------------------------------
 
 model TrainingCourse {
@@ -309,4 +342,74 @@ model UserLessonCompletion {
   completedAt DateTime @default(now())
 
   @@unique([userId, lessonId])
+}
+
+// ---------------------------------------------------------------------------
+// Product-image identification training — the simple replacement for the
+// course/chapter/lesson/assessment system above. Admin uploads a product
+// photo and types the product name (which doubles as the label admins see
+// and the exact answer customers must type — there is deliberately no
+// separate "expected answer" field, since the admin form never exposes one).
+// Customer looks at the photo and types the product name; every submission
+// is reviewed by an admin (PENDING -> APPROVED/REJECTED) — an admin's
+// approval is what counts toward completion, never the raw text match by
+// itself (isAutoMatch is only a triage hint shown to the admin).
+//
+// trainingCompletedAt (on User) is set here by
+// evaluateAndSetTaskTrainingCompletion() in trainingTaskCompletion.service.ts
+// once every published+required TrainingTask has at least one APPROVED
+// submission from the user — a second, independent writer of the same field
+// alongside the legacy evaluateAndSetTrainingCompletion() above.
+// ---------------------------------------------------------------------------
+
+enum TrainingTaskSubmissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model TrainingTask {
+  id          String   @id @default(uuid())
+  productName String
+  imageUrl    String
+  instruction String
+  isPublished Boolean  @default(false)
+  isRequired  Boolean  @default(true)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  submissions TrainingTaskSubmission[]
+
+  @@index([isPublished])
+}
+
+// Snapshotting productName/imageUrl at submission time means an admin
+// editing or replacing a task later never silently rewrites the meaning of
+// a historical submission (see TrainingTask doc comment above). taskId is
+// nullable and onDelete: SetNull (rather than Cascade) for the same
+// reason: deleting a TrainingTask must never delete the historical review
+// record of what was submitted, by whom, and how it was reviewed — only
+// the now-dangling reference to the deleted task itself is cleared.
+model TrainingTaskSubmission {
+  id                  String                       @id @default(uuid())
+  userId              String
+  user                User                         @relation("TrainingTaskSubmissionsByUser", fields: [userId], references: [id], onDelete: Cascade)
+  taskId              String?
+  task                TrainingTask?                @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  submittedAnswer     String
+  isAutoMatch         Boolean                      @default(false)
+  productNameSnapshot String
+  imageUrlSnapshot    String
+  status              TrainingTaskSubmissionStatus @default(PENDING)
+  reviewedById        String?
+  reviewedBy          User?                        @relation("TrainingTaskSubmissionsReviewed", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt          DateTime?
+  rejectionReason     String?
+  createdAt           DateTime                     @default(now())
+  updatedAt           DateTime                     @updatedAt
+
+  @@index([userId])
+  @@index([taskId])
+  @@index([status])
 }

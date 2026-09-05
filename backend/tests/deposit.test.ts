@@ -68,7 +68,7 @@ describe('deposits (training-gated, per-asset, admin-reviewed)', () => {
 
   it('rejects a disabled or unconfigured asset even after training completion', async () => {
     const user = await registerAndLogin();
-    await completeTraining(user);
+    await completeTrainingTasks(user);
 
     const res = await user.agent
       .post('/api/wallet/deposit')
@@ -82,7 +82,7 @@ describe('deposits (training-gated, per-asset, admin-reviewed)', () => {
     const admin = await createAdminAndLogin();
     const asset = await enableUsdt(admin);
     const user = await registerAndLogin();
-    await completeTraining(user);
+    await completeTrainingTasks(user);
 
     const res = await user.agent
       .post('/api/wallet/deposit')
@@ -102,7 +102,7 @@ describe('deposits (training-gated, per-asset, admin-reviewed)', () => {
     const admin = await createAdminAndLogin();
     await enableUsdt(admin);
     const user = await registerAndLogin();
-    await completeTraining(user);
+    await completeTrainingTasks(user);
 
     const createRes = await user.agent
       .post('/api/wallet/deposit')
@@ -130,7 +130,7 @@ describe('deposits (training-gated, per-asset, admin-reviewed)', () => {
     const admin = await createAdminAndLogin();
     await enableUsdt(admin);
     const user = await registerAndLogin();
-    await completeTraining(user);
+    await completeTrainingTasks(user);
 
     const createRes = await user.agent
       .post('/api/wallet/deposit')
@@ -158,7 +158,7 @@ describe('deposits (training-gated, per-asset, admin-reviewed)', () => {
     const admin = await createAdminAndLogin();
     await enableUsdt(admin);
     const user = await registerAndLogin();
-    await completeTraining(user);
+    await completeTrainingTasks(user);
 
     const createRes = await user.agent
       .post('/api/wallet/deposit')
@@ -199,7 +199,7 @@ describe('deposits (training-gated, per-asset, admin-reviewed)', () => {
     const admin = await createAdminAndLogin();
     await enableUsdt(admin);
     const user = await registerAndLogin();
-    await completeTraining(user);
+    await completeTrainingTasks(user);
 
     const res = await user.agent
       .post('/api/wallet/deposit')
@@ -212,7 +212,7 @@ describe('deposits (training-gated, per-asset, admin-reviewed)', () => {
     const admin = await createAdminAndLogin();
     await enableUsdt(admin);
     const user = await registerAndLogin();
-    await completeTraining(user);
+    await completeTrainingTasks(user);
 
     const res = await user.agent.post('/api/wallet/deposit').send({ assetCode: 'USDT', amount: 10 });
     expect(res.status).toBe(403);

@@ -60,6 +60,29 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<{ da
   return { data: body.data as T, meta: body.meta };
 }
 
+// Separate from request() because a FormData body must NOT get a manual
+// Content-Type header — the browser sets the multipart boundary itself.
+async function upload<T>(path: string, formData: FormData): Promise<{ data: T; meta?: Record<string, unknown> }> {
+  const headers: Record<string, string> = {};
+  const csrfToken = getCookie('adp_csrf');
+  if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'POST',
+    headers,
+    body: formData,
+    credentials: 'include',
+  });
+
+  const body = (await res.json().catch(() => null)) as ApiEnvelope<T> | null;
+
+  if (!res.ok || !body || !body.success) {
+    throw new ApiError(res.status, body?.message || 'Something went wrong. Please try again.');
+  }
+
+  return { data: body.data as T, meta: body.meta };
+}
+
 export const api = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body?: unknown) =>
@@ -69,4 +92,5 @@ export const api = {
   put: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'PUT', body: body !== undefined ? JSON.stringify(body) : undefined }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
+  upload: <T>(path: string, formData: FormData) => upload<T>(path, formData),
 };

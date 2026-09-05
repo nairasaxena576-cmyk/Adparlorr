@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
-import { TrainingBanner } from '@/components/TrainingBanner';
 import { ToastContainer } from '@/components/Toast';
 import { Landing } from '@/pages/Landing';
 import { Register } from '@/pages/Register';
@@ -8,15 +7,15 @@ import { Login } from '@/pages/Login';
 import { DashboardLayout } from '@/pages/DashboardLayout';
 import { DashboardHome } from '@/pages/DashboardHome';
 import { Orders } from '@/pages/Orders';
+import { Records } from '@/pages/Records';
 import { Referral } from '@/pages/Referral';
 import { WalletPage } from '@/pages/Wallet';
 import { Support } from '@/pages/Support';
 import { Training } from '@/pages/Training';
-import { TrainingCourse } from '@/pages/TrainingCourse';
-import { TrainingLesson } from '@/pages/TrainingLesson';
-import { TrainingAssessment } from '@/pages/TrainingAssessment';
 import { Admin } from '@/pages/Admin';
-import { AdminTrainingManagement } from '@/pages/admin/TrainingManagement';
+import { AdminTrainingTasks } from '@/pages/admin/TrainingTasks';
+import { AdminTrainingSubmissions } from '@/pages/admin/TrainingSubmissions';
+import { AdminProductManagement } from '@/pages/admin/ProductManagement';
 import { useStore } from '@/store/useStore';
 
 function App() {
@@ -28,8 +27,7 @@ function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-ink-900">
-      <TrainingBanner />
+    <div className="min-h-screen">
       <ToastContainer />
       <Routes>
         <Route path="/" element={<Landing />} />
@@ -38,16 +36,16 @@ function App() {
         <Route path="/dashboard" element={<DashboardLayout />}>
           <Route index element={<DashboardHome />} />
           <Route path="orders" element={<Orders />} />
+          <Route path="records" element={<Records />} />
           <Route path="referral" element={<Referral />} />
           <Route path="wallet" element={<WalletPage />} />
           <Route path="support" element={<Support />} />
           <Route path="training" element={<Training />} />
-          <Route path="training/:courseId" element={<TrainingCourse />} />
-          <Route path="training/:courseId/lessons/:lessonId" element={<TrainingLesson />} />
-          <Route path="training/:courseId/assessment" element={<TrainingAssessment />} />
         </Route>
         <Route path="/admin" element={<Admin />} />
-        <Route path="/admin/training" element={<AdminTrainingManagement />} />
+        <Route path="/admin/products" element={<AdminProductManagement />} />
+        <Route path="/admin/training" element={<AdminTrainingTasks />} />
+        <Route path="/admin/training/submissions" element={<AdminTrainingSubmissions />} />
       </Routes>
     </div>
   );

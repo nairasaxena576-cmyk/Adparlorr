@@ -35,6 +35,19 @@ const envSchema = z.object({
   SIMULATION_MERGE_THRESHOLD: z.coerce.number().int().positive().default(15),
   SIMULATION_MIN_WITHDRAWAL_BALANCE: z.coerce.number().nonnegative().default(100),
   SIMULATION_MAX_DEPOSIT_AMOUNT: z.coerce.number().positive().default(100_000),
+  // Fixed size of one customer workbench set — always exactly 45 unless
+  // explicitly reconfigured. Never derived from catalog size.
+  SIMULATION_WORKBENCH_SET_SIZE: z.coerce.number().int().positive().default(45),
+
+  // --- Supabase Storage (training task product images) --- backend-only.
+  // Optional at the schema level so the app still boots locally / typechecks
+  // / builds without real credentials — training.tasks image upload fails
+  // clearly at the point of use (see lib/supabaseStorage.ts) rather than
+  // blocking the whole process from starting. Required in production, see
+  // the superRefine check below.
+  SUPABASE_URL: z.string().url('SUPABASE_URL must be a valid URL').optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
+  SUPABASE_STORAGE_BUCKET: z.string().min(1).default('training-task-images'),
 });
 
 // Placeholder-looking secrets that must never reach a production process —
@@ -56,6 +69,14 @@ const validatedSchema = envSchema.superRefine((data, ctx) => {
         code: z.ZodIssueCode.custom,
         path: ['COOKIE_SECURE'],
         message: 'COOKIE_SECURE must be true in production (cookies are sent over HTTPS only).',
+      });
+    }
+    if (!data.SUPABASE_URL || !data.SUPABASE_SERVICE_ROLE_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SUPABASE_URL'],
+        message:
+          'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required in production — training task image upload has no local-disk fallback.',
       });
     }
   }

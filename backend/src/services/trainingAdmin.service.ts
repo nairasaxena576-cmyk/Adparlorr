@@ -231,9 +231,32 @@ export async function resetProgressForAdmin(courseId: string, userId?: string) {
   const course = await findCourseById(courseId);
   if (!course) throw AppError.notFound('Course not found.');
 
-  const affectedUserIds = userId
-    ? [userId]
-    : (await listUserIdsWithProgressForCourse(courseId)).map((p) => p.userId);
+  let affectedUserIds: string[];
+  if (userId) {
+    // Specific user requested - only affect that user (existing behavior)
+    affectedUserIds = [userId];
+  } else {
+    // No specific user - get all affected users
+    const legacyProgressUserIds = (await listUserIdsWithProgressForCourse(courseId)).map(
+      (p) => p.userId
+    );
+    if (course.isRequired) {
+      // For required courses, also include users who have trainingCompletedAt set
+      // (they earned it via the global Training Task system - the current authoritative source)
+      const usersWithTrainingCompletion = await prisma.user.findMany({
+        where: { trainingCompletedAt: { not: null } },
+        select: { id: true }
+      });
+      const trainedUserIds = usersWithTrainingCompletion.map((u) => u.id);
+
+      // Combine and deduplicate (though overlap is unlikely, this is safe)
+      const allUserIds = [...legacyProgressUserIds, ...trainedUserIds];
+      affectedUserIds = [...new Set(allUserIds)];
+    } else {
+      // Non-required course - only legacy progress users (existing behavior)
+      affectedUserIds = legacyProgressUserIds;
+    }
+  }
 
   await prisma.$transaction(async (tx) => {
     await deleteLessonCompletionsForCourse(courseId, userId, tx);

@@ -7,6 +7,7 @@ import {
   Wallet,
   HeadphonesIcon,
   GraduationCap,
+  ClipboardList,
   LogOut,
   Menu,
   X,
@@ -14,10 +15,12 @@ import {
 import { useStore } from '@/store/useStore';
 import { useToast } from '@/components/Toast';
 import { LoadingScreen } from '@/components/LoadingScreen';
+import { BottomNav } from '@/components/BottomNav';
 
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard, end: true },
   { to: '/dashboard/orders', label: 'Orders', Icon: ShoppingBag, end: false },
+  { to: '/dashboard/records', label: 'Records', Icon: ClipboardList, end: false },
   { to: '/dashboard/referral', label: 'Referral', Icon: Users, end: false },
   { to: '/dashboard/wallet', label: 'Wallet', Icon: Wallet, end: false },
   { to: '/dashboard/training', label: 'Training', Icon: GraduationCap, end: false },
@@ -46,9 +49,9 @@ export function DashboardLayout() {
   const closeSidebar = () => setSidebarOpen(false);
 
   return (
-    <div className="min-h-screen bg-ink-950">
+    <div className="min-h-screen">
       {/* Top bar */}
-      <header className="sticky top-9 z-30 border-b border-ink-700 bg-ink-900">
+      <header className="sticky top-0 z-30 border-b border-ink-700 bg-ink-900">
         <div className="flex h-16 items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-3">
             <button
@@ -84,7 +87,7 @@ export function DashboardLayout() {
 
       <div className="flex">
         {/* Sidebar — desktop */}
-        <aside className="sticky top-[6.5rem] hidden h-[calc(100vh-6.5rem)] w-64 shrink-0 border-r border-ink-700 bg-ink-900 lg:block">
+        <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-64 shrink-0 border-r border-ink-700 bg-ink-900 lg:block">
           <SidebarContent onNavigate={closeSidebar} />
         </aside>
 
@@ -104,11 +107,15 @@ export function DashboardLayout() {
           </div>
         )}
 
-        {/* Main */}
-        <main className="min-h-[calc(100vh-6.5rem)] flex-1 px-4 py-6 sm:px-6 sm:py-8">
+        {/* Main — bottom padding on mobile clears the fixed BottomNav so it
+            never covers the last bit of page content; not needed at lg:
+            since the bottom nav is hidden there. */}
+        <main className="min-h-[calc(100vh-4rem)] flex-1 px-4 py-6 pb-24 sm:px-6 sm:py-8 lg:pb-8">
           <Outlet />
         </main>
       </div>
+
+      <BottomNav />
     </div>
   );
 }

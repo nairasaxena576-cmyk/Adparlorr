@@ -20,6 +20,10 @@ export default defineConfig({
     env: {
       NODE_ENV: 'test',
       DATABASE_URL: deriveTestDatabaseUrl(),
+      // Exercises the exact same "first N eligible products" workbench
+      // logic as production (default 45) with a much smaller, fast,
+      // deterministic N — no other test depends on this value.
+      SIMULATION_WORKBENCH_SET_SIZE: '5',
     },
   },
 });

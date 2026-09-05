@@ -2,6 +2,7 @@ import { beforeAll, beforeEach, afterAll } from 'vitest';
 import { env } from '../src/config/env';
 import { prisma } from '../src/lib/prisma';
 import { buildSyntheticProducts } from '../src/lib/productCatalog';
+import { resetTaskCounter, resetProductCounter, resetCourseCounter, resetCounter } from './helpers';
 
 // This suite truncates the database between every test. Refuse to run
 // unless DATABASE_URL clearly points at a disposable test database —
@@ -24,6 +25,8 @@ async function clearPerTestData() {
   await prisma.taskSubmission.deleteMany();
   // Cascades away chapters/lessons/assessment/questions/answers/progress/completions.
   await prisma.trainingCourse.deleteMany();
+  // Cascades away TrainingTaskSubmission rows.
+  await prisma.trainingTask.deleteMany();
   await prisma.user.deleteMany();
   await prisma.supportSettings.deleteMany();
 }
@@ -57,6 +60,11 @@ beforeAll(async () => {
 beforeEach(async () => {
   await clearPerTestData();
   await resetCryptoAssets();
+  // Reset all counters to ensure consistent ordering across test files
+  resetTaskCounter();
+  resetProductCounter();
+  resetCourseCounter();
+  resetCounter();
 });
 
 afterAll(async () => {

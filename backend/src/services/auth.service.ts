@@ -18,6 +18,7 @@ export interface SafeUser {
   role: Role;
   referralCode: string;
   balance: number;
+  workbenchBalance: number;
   totalEarnings: number;
   totalDeposits: number;
   completedOrders: number;
@@ -34,6 +35,7 @@ export function toSafeUser(user: User): SafeUser {
     role: user.role,
     referralCode: user.referralCode,
     balance: Number(user.balance),
+    workbenchBalance: Number(user.workbenchBalance),
     totalEarnings: Number(user.totalEarnings),
     totalDeposits: Number(user.totalDeposits),
     completedOrders: user.completedOrders,

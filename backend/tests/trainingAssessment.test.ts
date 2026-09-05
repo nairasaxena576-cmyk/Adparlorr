@@ -1,30 +1,52 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
-import { app, registerAndLogin, createAdminAndLogin, createFixtureCourse } from './helpers';
+import { app, registerAndLogin, createAdminAndLogin, createFixtureTask, createFixtureCourse } from './helpers';
 
-async function enableUsdtAndCompleteTraining(
+async function enableUsdtAndCompleteTrainingTasks(
   user: Awaited<ReturnType<typeof registerAndLogin>>,
   admin: Awaited<ReturnType<typeof createAdminAndLogin>>,
-  course: Awaited<ReturnType<typeof createFixtureCourse>>
 ) {
   await admin.agent
     .put('/api/admin/crypto-assets/USDT')
     .set('X-CSRF-Token', admin.csrfToken)
     .send({ address: 'TAddressExample', isEnabled: true });
 
-  const [q1, q2] = course.assessment!.questions;
-  const correct1 = q1.answers.find((a) => a.isCorrect)!;
-  const correct2 = q2.answers.find((a) => a.isCorrect)!;
+  // Create two required training tasks (matches test setup)
+  const task1 = await createFixtureTask({ order: 1, productName: 'Fixture Product 1' });
+  const task2 = await createFixtureTask({ order: 2, productName: 'Fixture Product 2' });
 
-  await user.agent
-    .post(`/api/training/courses/${course.id}/assessment/submit`)
+  // Submit and approve first task
+  const submit1 = await user.agent
+    .post(`/api/training/tasks/${task1.id}/submit`)
     .set('X-CSRF-Token', user.csrfToken)
-    .send({
-      answers: [
-        { questionId: q1.id, answerId: correct1.id },
-        { questionId: q2.id, answerId: correct2.id },
-      ],
-    });
+    .send({ answer: task1.productName });
+
+  expect(submit1.status).toBe(201);
+  expect(submit1.body.data.submissionId).toBeDefined();
+
+  const approve1 = await admin.agent
+    .post(`/api/admin/training/submissions/${submit1.body.data.submissionId}/approve`)
+    .set('X-CSRF-Token', admin.csrfToken);
+
+  expect(approve1.status).toBe(200);
+  expect(approve1.body.data.submission.status).toBe('APPROVED');
+
+  // Submit and approve second task (which will complete training)
+  const submit2 = await user.agent
+    .post(`/api/training/tasks/${task2.id}/submit`)
+    .set('X-CSRF-Token', user.csrfToken)
+    .send({ answer: task2.productName });
+
+  expect(submit2.status).toBe(201);
+  expect(submit2.body.data.submissionId).toBeDefined();
+
+  const approve2 = await admin.agent
+    .post(`/api/admin/training/submissions/${submit2.body.data.submissionId}/approve`)
+    .set('X-CSRF-Token', admin.csrfToken);
+
+  expect(approve2.status).toBe(200);
+  expect(approve2.body.data.submission.status).toBe('APPROVED');
+  expect(approve2.body.data.user.trainingCompletedAt).not.toBeNull();
 }
 
 describe('training assessment (customer)', () => {
@@ -84,26 +106,18 @@ describe('training assessment (customer)', () => {
     expect(me.body.data.user.trainingCompletedAt).toBeNull();
   });
 
-  it('sets trainingCompletedAt once the assessment is passed', async () => {
-    const course = await createFixtureCourse();
-    const { agent, csrfToken } = await registerAndLogin();
-    const [q1, q2] = course.assessment!.questions;
-    const correct1 = q1.answers.find((a) => a.isCorrect)!;
-    const correct2 = q2.answers.find((a) => a.isCorrect)!;
+  it('deposit becomes available after completing the required training tasks', async () => {
+    const admin = await createAdminAndLogin();
+    const user = await registerAndLogin();
 
-    const res = await agent
-      .post(`/api/training/courses/${course.id}/assessment/submit`)
-      .set('X-CSRF-Token', csrfToken)
-      .send({
-        answers: [
-          { questionId: q1.id, answerId: correct1.id },
-          { questionId: q2.id, answerId: correct2.id },
-        ],
-      });
+    await enableUsdtAndCompleteTrainingTasks(user, admin);
 
-    expect(res.body.data.score).toBe(100);
-    expect(res.body.data.passed).toBe(true);
-    expect(res.body.data.user.trainingCompletedAt).not.toBeNull();
+    const res = await user.agent
+      .post('/api/wallet/deposit')
+      .set('X-CSRF-Token', user.csrfToken)
+      .send({ assetCode: 'USDT', amount: 25 });
+    expect(res.status).toBe(201);
+    expect(res.body.data.deposit.status).toBe('PENDING');
   });
 
   it('cannot be bypassed by direct API request — the blind-complete endpoint no longer exists', async () => {
@@ -142,21 +156,6 @@ describe('training assessment (customer)', () => {
       .set('X-CSRF-Token', csrfToken)
       .send({ assetCode: 'USDT', amount: 25 });
     expect(res.status).toBe(403);
-  });
-
-  it('deposit becomes available after passing the required course assessment', async () => {
-    const admin = await createAdminAndLogin();
-    const course = await createFixtureCourse();
-    const user = await registerAndLogin();
-
-    await enableUsdtAndCompleteTraining(user, admin, course);
-
-    const res = await user.agent
-      .post('/api/wallet/deposit')
-      .set('X-CSRF-Token', user.csrfToken)
-      .send({ assetCode: 'USDT', amount: 25 });
-    expect(res.status).toBe(201);
-    expect(res.body.data.deposit.status).toBe('PENDING');
   });
 
   it('requires authentication', async () => {

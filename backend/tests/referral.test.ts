@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { registerAndLogin } from './helpers';
+import { registerAndLogin, createFixtureProduct, createFixtureWorkbenchSet } from './helpers';
 
 describe('referrals', () => {
   it('links a new user to the referrer identified by the entered code', async () => {
@@ -29,8 +29,9 @@ describe('referrals', () => {
     const referrer = await registerAndLogin();
     const referred = await registerAndLogin({ referralCode: referrer.body.data.user.referralCode });
 
-    const productsRes = await referred.agent.get('/api/products');
-    const product = productsRes.body.data.products[0];
+    // Create enough products to make workbench ready (test override is 5)
+    const products = await createFixtureWorkbenchSet(5);
+    const product = products[0];
     await referred.agent.post('/api/orders').set('X-CSRF-Token', referred.csrfToken).send({ productId: product.id });
 
     const res = await referrer.agent.get('/api/referrals');

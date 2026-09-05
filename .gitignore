@@ -21,3 +21,8 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# Claude Code session artifacts — not project source
+memory/
+proposed_diff.patch
+backend/test_output.txt

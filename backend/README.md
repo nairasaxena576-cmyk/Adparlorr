@@ -32,6 +32,17 @@ Then fill in `.env` (never commit it — it's gitignored):
 | `RATE_LIMIT_*` | Global and auth-specific rate limiting |
 | `ADMIN_EMAIL` / `ADMIN_INITIAL_PASSWORD` | Read **once** by the seed script to bootstrap one admin account. Not used at request time; there is no hardcoded admin login anywhere in the code |
 | `SIMULATION_*` | Merge threshold, simulated minimum withdrawal balance, simulated max deposit — training config only |
+| `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_STORAGE_BUCKET` | Backend-only Supabase Storage config for training task product images — see [Storage setup](#storage-setup) below. `SUPABASE_SERVICE_ROLE_KEY` must never reach the frontend, a `VITE_*` variable, an API response, or a log line |
+
+#### Storage setup
+Product-style images — training task photos (`POST /api/admin/training/tasks/upload-image`) and Orders catalog product photos (`POST /api/admin/products/upload-image`) — are stored in Supabase Storage, not on local disk and not in Postgres. The DB only ever holds the resulting URL string (`TrainingTask.imageUrl`, `Product.imageUrl`). Both features share one bucket, split by path prefix (`training-tasks/<uuid>.<ext>` and `products/<uuid>.<ext>` — see `lib/supabaseStorage.ts`), rather than provisioning a second bucket for what is otherwise an identical need. One-time setup in your Supabase project's dashboard:
+
+1. **Storage → New bucket** — name it to match `SUPABASE_STORAGE_BUCKET` (default `training-task-images`). Despite the name, this bucket holds both training-task and product images, each under its own prefix.
+2. Mark the bucket **public** — these are non-sensitive admin-uploaded photos meant to be viewed by any logged-in customer, the same trust level the app already gives external image URLs elsewhere. A public bucket means images load directly from Supabase's CDN with no signed-URL machinery; nothing else in the bucket is exposed since it holds only these images.
+3. Copy your project's **service role key** (Project Settings → API) into `SUPABASE_SERVICE_ROLE_KEY` in `.env` — backend-only, never the anon/public key, never committed.
+4. Set `SUPABASE_URL` to your project's API URL (Project Settings → API → Project URL).
+
+Without these three set, the app still boots and runs normally — only the upload endpoint fails, with a clear error, the first time it's actually used. In production, boot-time environment validation refuses to start the process at all without them (see `config/env.ts`).
 
 #### Cookies note
 The auth cookie's value is itself a signed JWT (verified via `JWT_SECRET`), so there is deliberately **no separate `COOKIE_SECRET`** — signing a second envelope around an already-signed token would add a secret to manage without adding real security. `COOKIE_SECURE`/`COOKIE_SAME_SITE`/`COOKIE_DOMAIN` only control cookie transport behavior, not signing.
@@ -106,6 +117,21 @@ All responses follow `{ "success": true, "data": ... }` or `{ "success": false, 
 | Method | Route | Auth |
 |---|---|---|
 | GET | `/api/products` | required |
+
+Returns only `isActive` products — these power the Orders page's submittable product cards. Never includes draft/unpublished products or any admin-only field.
+
+### Products (admin)
+| Method | Route | Auth | Body |
+|---|---|---|---|
+| GET | `/api/admin/products` | ADMIN | — |
+| POST | `/api/admin/products` | ADMIN | `{ name, category, reward, cost, imageUrl?, isActive?, displayOrder? }` |
+| GET | `/api/admin/products/:id` | ADMIN | — |
+| PUT | `/api/admin/products/:id` | ADMIN | same fields, all optional |
+| DELETE | `/api/admin/products/:id` | ADMIN | — |
+| POST | `/api/admin/products/:id/reorder` | ADMIN | `{ direction: 'up' \| 'down' }` |
+| POST | `/api/admin/products/upload-image` | ADMIN | multipart `image` file |
+
+`displayOrder` is unique; omit it on create to auto-assign the next free value, or supply one and get a `409 Conflict` if it collides — reordering instead swaps two existing products' values, which can never collide. Deleting a product that already has a `TaskSubmission` (a real customer order) is blocked with `409 Conflict` (the DB's `ON DELETE RESTRICT` on `TaskSubmission.productId` enforces this) — unpublish it (`isActive: false`) instead. `TaskSubmission` snapshots `rewardAmount`/`costAmount` at submission time, so editing a product's reward/cost never rewrites historical order records.
 
 ### Orders (task submissions)
 | Method | Route | Auth | Body |

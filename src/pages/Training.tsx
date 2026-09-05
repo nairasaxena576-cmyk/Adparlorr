@@ -1,79 +1,170 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { GraduationCap, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, Lock, ArrowRight, Wallet, Clock, XCircle } from 'lucide-react';
 import { useStore } from '@/store/useStore';
+import { useToast } from '@/components/Toast';
 
 export function Training() {
-  const courses = useStore((s) => s.trainingCourses);
-  const fetchTrainingCourses = useStore((s) => s.fetchTrainingCourses);
+  const tasks = useStore((s) => s.trainingTasks);
+  const progress = useStore((s) => s.trainingTaskProgress);
+  const fetchTrainingTasks = useStore((s) => s.fetchTrainingTasks);
+  const fetchTrainingTaskProgress = useStore((s) => s.fetchTrainingTaskProgress);
+  const submitTrainingTask = useStore((s) => s.submitTrainingTask);
+  const showToast = useToast();
+
+  const [answer, setAnswer] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    fetchTrainingCourses();
-  }, [fetchTrainingCourses]);
+    fetchTrainingTasks();
+    fetchTrainingTaskProgress();
+  }, [fetchTrainingTasks, fetchTrainingTaskProgress]);
+
+  const currentTask = tasks.find((t) => t.status === 'current');
+
+  useEffect(() => {
+    setAnswer('');
+  }, [currentTask?.id]);
+
+  const handleSubmit = async () => {
+    if (!currentTask || !answer.trim()) {
+      showToast('Enter the product name before submitting.', 'error');
+      return;
+    }
+    setSubmitting(true);
+    const result = await submitTrainingTask(currentTask.id, answer.trim());
+    setSubmitting(false);
+    if (!result.ok) {
+      showToast(result.error || 'Failed to submit your answer.', 'error');
+      return;
+    }
+    showToast('Submitted for review. An admin will confirm your answer shortly.', 'success');
+  };
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-extrabold text-white">Required Training</h1>
         <p className="mt-1 text-sm text-ink-400">
-          Complete the training below to unlock deposits on your account.
+          Identify each product below to unlock deposits on your account.
         </p>
       </div>
 
-      {courses.length === 0 ? (
-        <div className="card text-center text-sm text-ink-400">No training courses are available yet.</div>
+      {tasks.length === 0 ? (
+        <div className="card text-center text-sm text-ink-400">No training tasks are available yet.</div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {courses.map((course) => (
-            <Link
-              key={course.id}
-              to={`/dashboard/training/${course.id}`}
-              className="card flex flex-col transition hover:border-brand-500/50"
-            >
-              <div className="flex items-start justify-between">
-                <div className="grid h-11 w-11 place-items-center rounded-xl bg-brand-500/15">
-                  <GraduationCap className="h-5.5 w-5.5 text-brand-400" />
-                </div>
-                {course.isRequired && (
-                  <span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-semibold text-amber-300">
-                    Required
-                  </span>
-                )}
+        <>
+          {progress && (
+            <div className="card">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-ink-400">
+                  Task {Math.min(progress.completedCount + 1, progress.totalRequired)} of {progress.totalRequired}
+                </span>
+                <span className="font-semibold text-brand-400">
+                  {progress.totalRequired > 0 ? Math.round((progress.completedCount / progress.totalRequired) * 100) : 0}%
+                </span>
               </div>
-              <h3 className="mt-3 text-lg font-bold text-white">{course.title}</h3>
-              {course.description && (
-                <p className="mt-1.5 text-sm leading-relaxed text-ink-400">{course.description}</p>
-              )}
+              <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-ink-700">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-brand-500 to-brand-400 transition-all"
+                  style={{
+                    width: `${progress.totalRequired > 0 ? (progress.completedCount / progress.totalRequired) * 100 : 0}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
 
-              <div className="mt-4">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-ink-400">
-                    {course.completedLessons}/{course.totalLessons} lessons
-                  </span>
-                  <span className="font-semibold text-brand-400">{course.progressPercent}%</span>
-                </div>
-                <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-ink-700">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-brand-500 to-brand-400 transition-all"
-                    style={{ width: `${course.progressPercent}%` }}
+          {progress?.completed ? (
+            <div className="card text-center">
+              <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-brand-500/15">
+                <CheckCircle2 className="h-8 w-8 text-brand-400" />
+              </div>
+              <h2 className="mt-4 text-xl font-bold text-white">Training Complete</h2>
+              <p className="mt-2 text-sm text-ink-300">
+                All required tasks have been approved. Deposit functionality is now unlocked.
+              </p>
+              <Link to="/dashboard/wallet" className="btn-brand mx-auto mt-5 w-fit">
+                <Wallet className="h-4 w-4" /> Go to Wallet
+              </Link>
+            </div>
+          ) : currentTask ? (
+            <div className="card">
+              <h2 className="text-lg font-bold text-white">Identify the Product</h2>
+              <p className="mt-1 text-sm text-ink-400">
+                {currentTask.instruction || 'Look carefully at the image below and enter the product name.'}
+              </p>
+
+              {currentTask.imageUrl && (
+                <div className="mt-4 overflow-hidden rounded-xl border border-ink-700 bg-ink-800">
+                  <img
+                    src={currentTask.imageUrl}
+                    alt="Product to identify"
+                    className="mx-auto max-h-80 w-full object-contain"
                   />
                 </div>
-              </div>
+              )}
 
-              <div className="mt-4 flex items-center gap-2 text-sm font-semibold text-brand-400">
-                {course.passed ? (
-                  <>
-                    <CheckCircle2 className="h-4 w-4" /> Completed
-                  </>
-                ) : (
-                  <>
-                    Continue <ArrowRight className="h-4 w-4" />
-                  </>
-                )}
-              </div>
-            </Link>
-          ))}
-        </div>
+              {currentTask.submissionStatus === 'PENDING' ? (
+                <div className="mt-5 flex items-center gap-3 rounded-lg bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                  <Clock className="h-4 w-4 shrink-0" />
+                  Submitted — awaiting admin review. Check back soon.
+                </div>
+              ) : (
+                <div className="mt-5 space-y-3">
+                  {currentTask.submissionStatus === 'REJECTED' && (
+                    <div className="flex items-start gap-3 rounded-lg bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                      <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                      <div>
+                        <p>Incorrect answer. Please try again.</p>
+                        {currentTask.rejectionReason && (
+                          <p className="mt-1 text-xs text-red-300/80">{currentTask.rejectionReason}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  <label className="block text-sm font-medium text-ink-200">What is the name of this product?</label>
+                  <input
+                    type="text"
+                    value={answer}
+                    onChange={(e) => setAnswer(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+                    disabled={submitting}
+                    placeholder="Enter the product name…"
+                    className="input-base disabled:opacity-60"
+                  />
+                  <button
+                    onClick={handleSubmit}
+                    disabled={submitting || !answer.trim()}
+                    className="btn-brand w-full py-3 disabled:opacity-60"
+                  >
+                    {submitting ? 'Submitting…' : 'Submit Answer'}
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          <div className="card">
+            <h3 className="text-sm font-bold uppercase tracking-wide text-ink-400">Training Progress</h3>
+            <div className="mt-3 space-y-1.5">
+              {tasks.map((task, idx) => (
+                <div key={task.id} className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
+                  {task.status === 'completed' ? (
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-brand-400" />
+                  ) : task.status === 'current' ? (
+                    <ArrowRight className="h-4 w-4 shrink-0 text-brand-400" />
+                  ) : (
+                    <Lock className="h-4 w-4 shrink-0 text-ink-500" />
+                  )}
+                  <span className={task.status === 'locked' ? 'text-ink-500' : 'text-ink-100'}>
+                    {task.status === 'completed' && task.productName ? task.productName : `Task ${idx + 1}`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

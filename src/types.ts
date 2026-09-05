@@ -7,6 +7,9 @@ export interface User {
   role: Role;
   referralCode: string;
   balance: number;
+  // Demo/simulation-only workbench ledger — entirely separate from the
+  // real `balance` above. Never affected by real deposits.
+  workbenchBalance: number;
   totalEarnings: number;
   totalDeposits: number;
   completedOrders: number;
@@ -18,8 +21,11 @@ export interface User {
 export interface TaskSubmission {
   id: string;
   productId: string;
+  productName: string;
+  productCategory: string;
   rewardAmount: number;
   costAmount: number;
+  isMergedOrder: boolean;
   createdAt: string;
 }
 
@@ -210,6 +216,64 @@ export interface AdminCourseDetail {
   assessment: AdminAssessment | null;
 }
 
+// ---- Training tasks (product-image identification) ----
+
+export type TrainingTaskStatus = 'locked' | 'current' | 'completed';
+export type TrainingTaskSubmissionStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface CustomerTrainingTask {
+  id: string;
+  order: number;
+  status: TrainingTaskStatus;
+  // Only present once status is 'completed' — this doubles as the answer
+  // key, so the backend never sends it before then.
+  productName: string | null;
+  imageUrl: string | null;
+  instruction: string | null;
+  submissionStatus: TrainingTaskSubmissionStatus | null;
+  rejectionReason: string | null;
+}
+
+export interface TrainingTaskProgress {
+  totalRequired: number;
+  completedCount: number;
+  completed: boolean;
+  currentTaskId: string | null;
+}
+
+export interface SubmitTrainingTaskResult {
+  submissionId: string;
+  status: TrainingTaskSubmissionStatus;
+}
+
+export interface AdminTrainingTask {
+  id: string;
+  productName: string;
+  imageUrl: string;
+  instruction: string;
+  isPublished: boolean;
+  isRequired: boolean;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminTrainingTaskSubmission {
+  id: string;
+  userId: string;
+  taskId: string;
+  submittedAnswer: string;
+  isAutoMatch: boolean;
+  productNameSnapshot: string;
+  imageUrlSnapshot: string;
+  status: TrainingTaskSubmissionStatus;
+  reviewedById: string | null;
+  reviewedAt: string | null;
+  rejectionReason: string | null;
+  createdAt: string;
+  user: { id: string; fullName: string; email: string };
+}
+
 export interface SupportSettings {
   telegramEnabled: boolean;
   telegramUsername: string | null;
@@ -229,6 +293,73 @@ export interface Product {
   category: string;
   reward: number;
   cost: number;
+  imageUrl: string | null;
+}
+
+export interface AdminProduct {
+  id: string;
+  displayOrder: number;
+  name: string;
+  category: string;
+  reward: number;
+  cost: number;
+  price: number;
+  imageUrl: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkbenchReadiness {
+  eligibleCount: number;
+  required: number;
+  ready: boolean;
+}
+
+// ---- Workbench (customer Orders redesign) ----
+
+export interface WorkbenchProduct {
+  id: string;
+  name: string;
+  category: string;
+  imageUrl: string | null;
+  price: number;
+}
+
+export interface MergeBundle {
+  products: WorkbenchProduct[];
+  combinedValue: number;
+  commission: number;
+}
+
+export type WorkbenchStatus = 'NOT_READY' | 'SHORTFALL' | 'COMPLETED' | 'MERGE' | 'NORMAL';
+
+export interface WorkbenchState {
+  status: WorkbenchStatus;
+  // total is a fixed business constant (45) — never derived from however
+  // many eligible products exist. eligibleCount is separate, informational.
+  progress: { completed: number; total: number };
+  eligibleCount: number;
+  // Demo/simulation-only — entirely separate from the real Wallet balance
+  // (User.balance). See order.service.ts / schema.prisma for the full
+  // real-vs-simulated separation.
+  workbenchBalance: number;
+  shortfall: number;
+  todaysCommission: number;
+  totalEarnings: number;
+  // Computed display-only figure (totalEarnings * 20%) — there is no
+  // backend ledger crediting this anywhere; see Records/Orders copy.
+  subsidy: number;
+  currentProduct: WorkbenchProduct | null;
+  mergeBundle: MergeBundle | null;
+}
+
+export interface SubmitWorkbenchResult {
+  status: Extract<WorkbenchStatus, 'NORMAL' | 'MERGE'>;
+  submittedCount: number;
+  commissionEarned: number;
+  workbench: WorkbenchState;
+  user: User;
 }
 
 export type Tier = 'Bronze' | 'Silver' | 'Gold' | 'Platinum';

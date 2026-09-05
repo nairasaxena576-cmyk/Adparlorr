@@ -39,8 +39,8 @@ export function Register() {
   };
 
   return (
-    <div className="min-h-screen bg-ink-900">
-      <nav className="sticky top-9 z-40 border-b border-ink-700 bg-ink-900/90 backdrop-blur-md">
+    <div className="min-h-screen">
+      <nav className="sticky top-0 z-40 border-b border-ink-700 bg-ink-900/90 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-8">
           <Link to="/" className="text-xl font-extrabold text-brand-400">Adparlorr</Link>
           <Link to="/" className="text-sm text-ink-300 hover:text-brand-400">Back to home</Link>

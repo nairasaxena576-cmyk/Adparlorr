@@ -9,7 +9,14 @@
     -moz-osx-font-smoothing: grayscale;
   }
   body {
-    @apply bg-ink-900 text-ink-100 font-sans antialiased;
+    @apply text-ink-100 font-sans antialiased;
+    background-color: #0a0e17;
+    background-image:
+      radial-gradient(circle at 85% -10%, rgba(45, 212, 191, 0.10), transparent 45%),
+      radial-gradient(circle at 5% 115%, rgba(13, 148, 136, 0.07), transparent 50%);
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    min-height: 100vh;
   }
 }
 

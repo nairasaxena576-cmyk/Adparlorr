@@ -9,6 +9,7 @@ export const SIMULATION = {
   MERGE_THRESHOLD: env.SIMULATION_MERGE_THRESHOLD,
   MIN_WITHDRAWAL_BALANCE: env.SIMULATION_MIN_WITHDRAWAL_BALANCE,
   MAX_DEPOSIT_AMOUNT: env.SIMULATION_MAX_DEPOSIT_AMOUNT,
+  WORKBENCH_SET_SIZE: env.SIMULATION_WORKBENCH_SET_SIZE,
   DISCLAIMER: 'This is a simulated training transaction from an authorized security-awareness exercise. No real funds, accounts, or payment systems are involved.',
   FAKE_DEPOSIT_ADDRESSES: {
     USDT: 'TX9z8mK2nLp4qR7vB3cF6dH1jW5yG0sA8b',

@@ -1,0 +1,13 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# React Router (BrowserRouter) needs every path served index.html so
+# client-side routes don't 404 on a hard refresh or direct link.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

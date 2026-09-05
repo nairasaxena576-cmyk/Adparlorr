@@ -113,17 +113,24 @@ export function DashboardHome() {
         </div>
       </div>
 
-      {user.isMerged && (
-        <div className="card border-amber-500/40 bg-amber-500/10">
-          <div className="flex items-center gap-3">
-            <span className="text-xl">⚠️</span>
-            <div>
-              <p className="font-bold text-amber-300">Merged Product Detected</p>
-              <p className="mt-1 text-sm text-amber-200/80">
-                Your balance is insufficient. Deposit required to continue working.{' '}
-                <Link to="/dashboard/support" className="font-semibold underline">Contact Support</Link>
-              </p>
+      {user.workbenchBalance < 0 && (
+        <div className="card border-red-500/40 bg-red-500/10">
+          <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+            <div className="flex items-center gap-3">
+              <span className="text-xl">⚠️</span>
+              <div>
+                <p className="font-bold text-red-300">
+                  Demo Balance Shortfall: -${Math.abs(user.workbenchBalance).toFixed(2)}
+                </p>
+                <p className="mt-1 text-sm text-red-200/80">
+                  Your simulated workbench balance is negative. Resolve it with demo credits on the workbench to
+                  continue — this is a demo simulation only, not your real Wallet balance.
+                </p>
+              </div>
             </div>
+            <Link to="/dashboard/orders" className="btn-brand shrink-0 bg-red-500 hover:bg-red-600">
+              Go to Workbench <ArrowRight className="h-4 w-4" />
+            </Link>
           </div>
         </div>
       )}

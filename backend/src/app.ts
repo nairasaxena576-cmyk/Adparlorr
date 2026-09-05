@@ -30,6 +30,10 @@ export function createApp() {
     res.status(200).json({ success: true, status: 'ok' });
   });
 
+  // Training task product images are served directly from Supabase
+  // Storage's own CDN now (see lib/supabaseStorage.ts) — there is no
+  // backend-served /uploads route, and no other feature in this app uses
+  // one, so helmet()'s default security headers are left untouched here.
   app.use('/api', apiRouter);
 
   app.use(notFoundHandler);

@@ -206,8 +206,8 @@ export function Admin() {
 
   if (!isAdmin) {
     return (
-      <div className="min-h-screen bg-ink-900">
-        <nav className="sticky top-9 z-40 border-b border-ink-700 bg-ink-900/90 backdrop-blur-md">
+      <div className="min-h-screen">
+        <nav className="sticky top-0 z-40 border-b border-ink-700 bg-ink-900/90 backdrop-blur-md">
           <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-8">
             <Link to="/" className="text-xl font-extrabold text-brand-400">Adparlorr</Link>
             <Link to="/" className="flex items-center gap-1 text-sm text-ink-300 hover:text-brand-400">
@@ -251,15 +251,17 @@ export function Admin() {
   }
 
   return (
-    <div className="min-h-screen bg-ink-950">
-      <nav className="sticky top-9 z-40 border-b border-ink-700 bg-ink-900">
+    <div className="min-h-screen">
+      <nav className="sticky top-0 z-40 border-b border-ink-700 bg-ink-900">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-8">
           <div className="flex items-center gap-2">
             <Shield className="h-5 w-5 text-brand-400" />
             <span className="text-lg font-extrabold text-brand-400">Admin Panel</span>
           </div>
           <div className="flex items-center gap-4">
-            <Link to="/admin/training" className="text-sm text-ink-300 hover:text-brand-400">Training Management</Link>
+            <Link to="/admin/products" className="text-sm text-ink-300 hover:text-brand-400">Products</Link>
+            <Link to="/admin/training" className="text-sm text-ink-300 hover:text-brand-400">Training Tasks</Link>
+            <Link to="/admin/training/submissions" className="text-sm text-ink-300 hover:text-brand-400">Training Submissions</Link>
             <Link to="/" className="text-sm text-ink-300 hover:text-brand-400">View Site</Link>
             <button
               onClick={async () => { await logout(); showToast('Logged out.', 'info'); navigate('/'); }}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { registerAndLogin, createAdminAndLogin, createFixtureCourse } from './helpers';
+import { registerAndLogin, createAdminAndLogin, createFixtureCourse, createFixtureTask } from './helpers';
 
 function uniqueSlug() {
   return `course-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -254,33 +254,78 @@ describe('training management (admin)', () => {
   });
 
   it('explicit reset-progress action clears progress and re-locks deposits for a required course', async () => {
+    // Establish training completion via the current Training Task system
     const admin = await createAdminAndLogin();
-    const course = await createFixtureCourse({ isRequired: true });
     const user = await registerAndLogin();
-    const [q1, q2] = course.assessment!.questions;
-    const correct1 = q1.answers.find((a) => a.isCorrect)!;
-    const correct2 = q2.answers.find((a) => a.isCorrect)!;
 
-    await user.agent
-      .post(`/api/training/courses/${course.id}/assessment/submit`)
+    // Create two required training tasks
+    const task1 = await createFixtureTask({ order: 1, productName: 'Fixture Product 1' });
+    const task2 = await createFixtureTask({ order: 2, productName: 'Fixture Product 2' });
+
+    // Submit and approve first task
+    const submit1 = await user.agent
+      .post(`/api/training/tasks/${task1.id}/submit`)
       .set('X-CSRF-Token', user.csrfToken)
-      .send({
-        answers: [
-          { questionId: q1.id, answerId: correct1.id },
-          { questionId: q2.id, answerId: correct2.id },
-        ],
-      });
+      .send({ answer: task1.productName });
 
-    const meBefore = await user.agent.get('/api/auth/me');
-    expect(meBefore.body.data.user.trainingCompletedAt).not.toBeNull();
+    expect(submit1.status).toBe(201);
+    expect(submit1.body.data.submissionId).toBeDefined();
 
+    const approve1 = await admin.agent
+      .post(`/api/admin/training/submissions/${submit1.body.data.submissionId}/approve`)
+      .set('X-CSRF-Token', admin.csrfToken);
+
+    expect(approve1.status).toBe(200);
+    expect(approve1.body.data.submission.status).toBe('APPROVED');
+
+    // Submit and approve second task (which completes training)
+    const submit2 = await user.agent
+      .post(`/api/training/tasks/${task2.id}/submit`)
+      .set('X-CSRF-Token', user.csrfToken)
+      .send({ answer: task2.productName });
+
+    expect(submit2.status).toBe(201);
+    expect(submit2.body.data.submissionId).toBeDefined();
+
+    const approve2 = await admin.agent
+      .post(`/api/admin/training/submissions/${submit2.body.data.submissionId}/approve`)
+      .set('X-CSRF-Token', admin.csrfToken);
+
+    expect(approve2.status).toBe(200);
+    expect(approve2.body.data.submission.status).toBe('APPROVED');
+    expect(approve2.body.data.user.trainingCompletedAt).not.toBeNull();
+
+    // Enable USDT for deposit testing (required for deposit endpoint to work)
+    await admin.agent
+      .put('/api/admin/crypto-assets/USDT')
+      .set('X-CSRF-Token', admin.csrfToken)
+      .send({ address: 'TAddressExample123', isEnabled: true });
+
+    // Verify deposit is available before reset
+    const depositBefore = await user.agent
+      .post('/api/wallet/deposit')
+      .set('X-CSRF-Token', user.csrfToken)
+      .send({ assetCode: 'USDT', amount: 25 });
+    expect(depositBefore.status).toBe(201);
+
+    // Create a required course for the reset-progress test
+    const course = await createFixtureCourse({ isRequired: true });
+
+    // Reset progress for the required course (this should clear trainingCompletedAt)
     const resetRes = await admin.agent
       .post(`/api/admin/training/courses/${course.id}/reset-progress`)
       .set('X-CSRF-Token', admin.csrfToken)
       .send({});
     expect(resetRes.status).toBe(200);
 
+    // Verify training completion is cleared and deposit is blocked again
     const meAfter = await user.agent.get('/api/auth/me');
     expect(meAfter.body.data.user.trainingCompletedAt).toBeNull();
+
+    const depositAfter = await user.agent
+      .post('/api/wallet/deposit')
+      .set('X-CSRF-Token', user.csrfToken)
+      .send({ assetCode: 'USDT', amount: 25 });
+    expect(depositAfter.status).toBe(403);
   });
 });
