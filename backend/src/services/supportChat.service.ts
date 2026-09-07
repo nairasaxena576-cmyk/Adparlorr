@@ -5,6 +5,7 @@ import {
   createSupportMessage,
   listMessagesForUser,
   hasAdminMessageForUser,
+  hasWaitingNoticeForUser,
   markReadByCustomer,
   markReadByAdmin,
   countUnreadByAdmin,
@@ -12,6 +13,12 @@ import {
 } from '../repositories/supportMessage.repository';
 
 const FAKE_ADDRESS = 'TX9z8mK2nLp4qR7vB3cF6dH1jW5yG0sA8b';
+
+// Sent once per thread, right after the first bot reply, as long as no
+// admin has taken over yet — see sendCustomerMessage below. Exported so
+// tests can assert on it without duplicating the literal string.
+export const WAITING_NOTICE_TEXT =
+  'Thanks for contacting Adparlor Support. Please wait a moment while a support agent reviews your request and gets back to you.';
 
 export interface SupportMessageDto {
   id: string;
@@ -83,6 +90,16 @@ export async function sendCustomerMessage(userId: string, text: string): Promise
   if (!adminEngaged) {
     const reply = getBotReply(text, Number(user.balance));
     created.push(await createSupportMessage({ userId, sender: 'BOT', text: reply }));
+
+    // The one-time "an agent will review this" notice — identified by the
+    // isWaitingNotice flag (never by matching message text), so it can
+    // never be duplicated and is unaffected by which keyword reply fired.
+    const alreadyNotified = await hasWaitingNoticeForUser(userId);
+    if (!alreadyNotified) {
+      created.push(
+        await createSupportMessage({ userId, sender: 'BOT', text: WAITING_NOTICE_TEXT, isWaitingNotice: true })
+      );
+    }
   }
 
   return created.map(toDto);

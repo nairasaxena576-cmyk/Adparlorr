@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import { prisma } from '../src/lib/prisma';
 import { app, registerAndLogin, createAdminAndLogin } from './helpers';
+import { WAITING_NOTICE_TEXT } from '../src/services/supportChat.service';
 
 type Session = Awaited<ReturnType<typeof registerAndLogin>>;
 
@@ -169,6 +170,105 @@ describe('support chat — bot behavior', () => {
     const listRes = await getCustomerMessages(customer);
     const found = listRes.body.data.messages.find((m: { id: string }) => m.id === botMsg.id);
     expect(found).toBeDefined();
+  });
+});
+
+describe('support chat — waiting/status notice', () => {
+  it('creates exactly one waiting/status BOT message alongside the normal keyword reply on the first customer message', async () => {
+    const customer = await registerAndLogin();
+    const res = await sendCustomerMessage(customer, 'How do I deposit?');
+    expect(res.status).toBe(201);
+
+    const botMessages = res.body.data.messages.filter((m: { sender: string }) => m.sender === 'BOT');
+    expect(botMessages).toHaveLength(2);
+
+    const keywordReply = botMessages.find((m: { text: string }) => m.text !== WAITING_NOTICE_TEXT);
+    const waitingNotice = botMessages.find((m: { text: string }) => m.text === WAITING_NOTICE_TEXT);
+    expect(keywordReply).toBeDefined();
+    expect(keywordReply.text).toContain('USDT or BTC'); // existing keyword behavior still works
+    expect(waitingNotice).toBeDefined();
+
+    const row = await prisma.supportMessage.findUnique({ where: { id: waitingNotice.id } });
+    expect(row?.sender).toBe('BOT');
+    expect(row?.isWaitingNotice).toBe(true);
+    expect(row?.userId).toBe(customer.body.data.user.id);
+  });
+
+  it('does not create a second waiting/status message on a subsequent customer message', async () => {
+    const customer = await registerAndLogin();
+    await sendCustomerMessage(customer, 'hello');
+    const secondRes = await sendCustomerMessage(customer, 'still there?');
+    expect(secondRes.status).toBe(201);
+
+    const waitingInSecondResponse = secondRes.body.data.messages.filter(
+      (m: { text: string }) => m.text === WAITING_NOTICE_TEXT
+    );
+    expect(waitingInSecondResponse).toHaveLength(0);
+
+    const allWaitingRows = await prisma.supportMessage.findMany({
+      where: { userId: customer.body.data.user.id, isWaitingNotice: true },
+    });
+    expect(allWaitingRows).toHaveLength(1);
+  });
+
+  it('the waiting/status message persists and appears in GET /api/support/messages after a refresh', async () => {
+    const customer = await registerAndLogin();
+    await sendCustomerMessage(customer, 'hello');
+
+    const res = await getCustomerMessages(customer);
+    const found = res.body.data.messages.find((m: { text: string }) => m.text === WAITING_NOTICE_TEXT);
+    expect(found).toBeDefined();
+    expect(found.sender).toBe('BOT');
+  });
+
+  it('the waiting/status message appears in the admin conversation view', async () => {
+    const customer = await registerAndLogin();
+    await sendCustomerMessage(customer, 'hello');
+    const admin = await createAdminAndLogin();
+
+    const res = await getAdminConversationMessages(admin, customer.body.data.user.id);
+    const found = res.body.data.messages.find((m: { text: string }) => m.text === WAITING_NOTICE_TEXT);
+    expect(found).toBeDefined();
+  });
+
+  it('admin takeover prevents any future waiting/status message for that customer', async () => {
+    const customer = await registerAndLogin();
+    await sendCustomerMessage(customer, 'hello'); // creates the one waiting notice
+    const admin = await createAdminAndLogin();
+    await sendAdminReply(admin, customer.body.data.user.id, 'human here now');
+
+    const afterTakeover = await sendCustomerMessage(customer, 'still need help');
+    const waitingAfterTakeover = afterTakeover.body.data.messages.filter(
+      (m: { text: string }) => m.text === WAITING_NOTICE_TEXT
+    );
+    expect(waitingAfterTakeover).toHaveLength(0);
+
+    const allWaitingRows = await prisma.supportMessage.findMany({
+      where: { userId: customer.body.data.user.id, isWaitingNotice: true },
+    });
+    expect(allWaitingRows).toHaveLength(1); // the original notice, never duplicated
+  });
+
+  it('the waiting/status notice is isolated per customer — takeover for A does not affect B', async () => {
+    const customerA = await registerAndLogin();
+    const customerB = await registerAndLogin();
+    const admin = await createAdminAndLogin();
+
+    await sendCustomerMessage(customerA, 'hello from A');
+    await sendAdminReply(admin, customerA.body.data.user.id, 'admin for A');
+
+    const bRes = await sendCustomerMessage(customerB, 'hello from B');
+    const bWaitingNotice = bRes.body.data.messages.find((m: { text: string }) => m.text === WAITING_NOTICE_TEXT);
+    expect(bWaitingNotice).toBeDefined();
+
+    const aWaitingRows = await prisma.supportMessage.findMany({
+      where: { userId: customerA.body.data.user.id, isWaitingNotice: true },
+    });
+    const bWaitingRows = await prisma.supportMessage.findMany({
+      where: { userId: customerB.body.data.user.id, isWaitingNotice: true },
+    });
+    expect(aWaitingRows).toHaveLength(1);
+    expect(bWaitingRows).toHaveLength(1);
   });
 });
 

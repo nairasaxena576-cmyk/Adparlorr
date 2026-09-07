@@ -271,6 +271,12 @@ model SupportMessage {
   // of an admin/bot message once they've seen it.
   readByAdmin    Boolean       @default(false)
   readByCustomer Boolean       @default(false)
+  // Marks the one-time "an agent will be with you shortly" notice (see
+  // supportChat.service.ts's WAITING_NOTICE_TEXT) as distinct from an
+  // ordinary keyword-matched BOT reply — a dedicated flag rather than
+  // matching on message text, so the idempotency check (at most one per
+  // thread, only before an admin takes over) is exact and never fragile.
+  isWaitingNotice Boolean      @default(false)
   createdAt      DateTime      @default(now())
 
   @@index([userId, createdAt])

@@ -4,7 +4,7 @@ import { prisma } from '../lib/prisma';
 type Client = PrismaClient | Prisma.TransactionClient;
 
 export function createSupportMessage(
-  data: { userId: string; sender: SupportSender; text: string },
+  data: { userId: string; sender: SupportSender; text: string; isWaitingNotice?: boolean },
   client: Client = prisma
 ) {
   return client.supportMessage.create({ data });
@@ -20,6 +20,12 @@ export function listMessagesForUser(userId: string, client: Client = prisma) {
 export function hasAdminMessageForUser(userId: string, client: Client = prisma) {
   return client.supportMessage
     .count({ where: { userId, sender: 'ADMIN' } })
+    .then((count) => count > 0);
+}
+
+export function hasWaitingNoticeForUser(userId: string, client: Client = prisma) {
+  return client.supportMessage
+    .count({ where: { userId, isWaitingNotice: true } })
     .then((count) => count > 0);
 }
 
