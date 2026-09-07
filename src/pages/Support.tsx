@@ -23,7 +23,7 @@ function getBotResponse(text: string, userBalance: number): string {
     return `You can deposit using USDT or BTC. Send your payment to: ${FAKE_ADDRESS}. Once confirmed, your balance will be updated automatically.`;
   }
   if (lower.includes('hello') || lower.includes('hi') || lower.includes('hey')) {
-    return `Hello! Welcome to Adparlorr Support. How can I help you today? If you have a merged product issue, please let me know.`;
+    return `Hello! Welcome to Adparlor Support. How can I help you today? If you have a merged product issue, please let me know.`;
   }
   if (lower.includes('tier') || lower.includes('upgrade')) {
     return `To upgrade your tier, you need to complete more orders and increase your total deposits. Keep working and depositing to reach Silver!`;
@@ -48,7 +48,7 @@ export function Support() {
     {
       id: genId(),
       sender: 'bot',
-      text: 'Hello! Welcome to Adparlorr Support. How can I help you today?',
+      text: 'Hello! Welcome to Adparlor Support. How can I help you today?',
       createdAt: Date.now(),
     },
   ]);
@@ -101,7 +101,7 @@ export function Support() {
             <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white bg-green-500" />
           </div>
           <div>
-            <p className="text-sm font-bold text-ink-900">Adparlorr Support</p>
+            <p className="text-sm font-bold text-ink-900">Adparlor Support</p>
             <p className="text-xs text-green-600">Online now</p>
           </div>
         </div>

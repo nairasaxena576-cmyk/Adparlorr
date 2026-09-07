@@ -17,6 +17,7 @@ import { useToast } from '@/components/Toast';
 import { LoadingScreen } from '@/components/LoadingScreen';
 import { BottomNav } from '@/components/BottomNav';
 import { CustomerBackground } from '@/components/customer/CustomerBackground';
+import { Logo } from '@/components/branding/Logo';
 
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard, end: true },
@@ -62,7 +63,7 @@ export function DashboardLayout() {
             >
               <Menu className="h-5 w-5" />
             </button>
-            <span className="text-lg font-extrabold text-brand-400">Adparlorr</span>
+            <Logo variant="dark" size="md" />
           </div>
           <div className="flex items-center gap-3 sm:gap-5">
             <div className="hidden items-center gap-2 rounded-lg border border-ink-700 px-3 py-1.5 sm:flex">

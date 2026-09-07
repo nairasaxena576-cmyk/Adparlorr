@@ -13,7 +13,7 @@ export function HeroSection() {
             Turn Great Products Into <span className="text-pink-600">Greater Visibility</span>
           </h1>
           <p className="mt-6 text-lg leading-relaxed text-slate-600">
-            Adparlorr helps brands and product owners increase online visibility, reach the right
+            Adparlor helps brands and product owners increase online visibility, reach the right
             audiences, and turn product attention into meaningful engagement.
           </p>
           <div className="mt-9 flex flex-col gap-3 sm:flex-row">

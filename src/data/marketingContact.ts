@@ -5,7 +5,7 @@
 // homepage hands off to a real mailto: link rather than pretending to
 // submit somewhere. Reuses the placeholder address the existing footer
 // already shipped with, rather than inventing a new one.
-export const CONTACT_EMAIL = 'support@adparlorr-demo.com';
+export const CONTACT_EMAIL = 'support@adparlor-demo.com';
 
 export function mailtoHref(subject: string, body?: string): string {
   const params = new URLSearchParams({ subject, ...(body ? { body } : {}) });

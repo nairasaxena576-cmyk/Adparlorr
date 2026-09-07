@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Menu, X } from 'lucide-react';
 import { mailtoHref } from '@/data/marketingContact';
+import { Logo } from '@/components/branding/Logo';
 
 const NAV_LINKS = [
   { label: 'Services', href: '#services' },
@@ -18,8 +19,8 @@ export function MarketingNavbar() {
   return (
     <header className="sticky top-0 z-40 border-b border-slate-100 bg-white/90 backdrop-blur-md">
       <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 sm:px-8">
-        <Link to="/" className="text-lg font-extrabold uppercase tracking-tight text-slate-900">
-          Ad<span className="text-pink-600">parlorr</span>
+        <Link to="/">
+          <Logo variant="light" size="lg" />
         </Link>
 
         <nav aria-label="Primary" className="hidden items-center gap-7 lg:flex">

@@ -10,7 +10,7 @@ export function CTASection() {
             Have a Product to Promote?
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-lg text-slate-300">
-            Put your product in front of the right audience with Adparlorr.
+            Put your product in front of the right audience with Adparlor.
           </p>
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <a

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Twitter, Facebook, Instagram, Linkedin, ArrowRight } from 'lucide-react';
 import { CONTACT_EMAIL, mailtoHref } from '@/data/marketingContact';
+import { Logo } from '@/components/branding/Logo';
 
 // Items with a real destination in this app are links; items the reference
 // structure calls for that have no corresponding page (no Careers page, no
@@ -39,8 +40,8 @@ export function MarketingFooter() {
       <div className="mx-auto max-w-7xl px-5 py-16 sm:px-8">
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-6">
           <div className="lg:col-span-2">
-            <Link to="/" className="text-lg font-extrabold uppercase tracking-tight text-slate-900">
-              Ad<span className="text-pink-600">parlorr</span>
+            <Link to="/">
+              <Logo variant="light" size="lg" />
             </Link>
             <p className="mt-3 max-w-xs text-sm leading-relaxed text-slate-600">
               Digital product marketing designed to increase visibility, reach, and engagement.
@@ -148,7 +149,7 @@ export function MarketingFooter() {
         </div>
 
         <div className="mt-10 flex flex-col items-center gap-3 border-t border-slate-200 pt-8 sm:flex-row sm:justify-between">
-          <p className="text-xs text-slate-500">© 2026 Adparlorr. All rights reserved.</p>
+          <p className="text-xs text-slate-500">© 2026 Adparlor. All rights reserved.</p>
           <div className="flex gap-5 text-xs text-slate-400">
             {LEGAL_ITEMS.map((label) => (
               <span key={label}>{label}</span>

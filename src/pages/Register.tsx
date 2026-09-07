@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, CheckCircle2 } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { useToast } from '@/components/Toast';
+import { Logo } from '@/components/branding/Logo';
 
 export function Register() {
   const navigate = useNavigate();
@@ -42,7 +43,7 @@ export function Register() {
     <div className="min-h-screen">
       <nav className="sticky top-0 z-40 border-b border-ink-700 bg-ink-900/90 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-8">
-          <Link to="/" className="text-xl font-extrabold text-brand-400">Adparlorr</Link>
+          <Link to="/"><Logo variant="dark" size="lg" /></Link>
           <Link to="/" className="text-sm text-ink-300 hover:text-brand-400">Back to home</Link>
         </div>
       </nav>
@@ -54,7 +55,7 @@ export function Register() {
             Start earning today
           </h1>
           <p className="mt-4 text-ink-300">
-            Create your free Adparlorr account and get instant access to paid tasks.
+            Create your free Adparlor account and get instant access to paid tasks.
           </p>
           <ul className="mt-8 space-y-3">
             {['No upfront fees', 'Work from anywhere', 'Daily payouts', 'Referral bonuses'].map((item) => (

@@ -4,6 +4,7 @@ import { Shield, ChevronLeft, ImagePlus, ClipboardList, Check, X, Clock, CheckCi
 import { useStore } from '@/store/useStore';
 import { useToast } from '@/components/Toast';
 import { LoadingScreen } from '@/components/LoadingScreen';
+import { Logo } from '@/components/branding/Logo';
 import type { AdminTrainingTaskSubmission, TrainingTaskSubmissionStatus } from '@/types';
 
 type StatusFilter = 'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL';
@@ -48,7 +49,7 @@ export function AdminTrainingSubmissions() {
       <div className="min-h-screen">
         <nav className="sticky top-0 z-40 border-b border-ink-700 bg-ink-900/90 backdrop-blur-md">
           <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-8">
-            <Link to="/" className="text-xl font-extrabold text-brand-400">Adparlorr</Link>
+            <Link to="/"><Logo variant="dark" size="lg" /></Link>
             <Link to="/" className="flex items-center gap-1 text-sm text-ink-300 hover:text-brand-400">
               <ChevronLeft className="h-4 w-4" /> Back
             </Link>
