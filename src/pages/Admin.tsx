@@ -279,6 +279,7 @@ export function Admin() {
             <Link to="/admin/products" className="text-sm text-ink-300 hover:text-brand-400">Products</Link>
             <Link to="/admin/training" className="text-sm text-ink-300 hover:text-brand-400">Training Tasks</Link>
             <Link to="/admin/training/submissions" className="text-sm text-ink-300 hover:text-brand-400">Training Submissions</Link>
+            <Link to="/admin/training/referrals" className="text-sm text-ink-300 hover:text-brand-400">Training Referrals</Link>
             <Link to="/" className="text-sm text-ink-300 hover:text-brand-400">View Site</Link>
             <button
               onClick={async () => { await logout(); showToast('Logged out.', 'info'); navigate('/'); }}

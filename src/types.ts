@@ -289,6 +289,18 @@ export interface AdminTrainingTaskSubmission {
   user: { id: string; fullName: string; email: string };
 }
 
+export interface TrainingOverviewRow {
+  referralId: string;
+  customer: { id: string; fullName: string; email: string; balance: number };
+  referrer: { id: string; fullName: string; tier: Tier } | null;
+  referralCode: string;
+  trainingFundingRequired: number | null;
+  trainingFundedAt: string | null;
+  trainingProgress: { completedCount: number; totalRequired: number };
+  trainingCompletedAt: string | null;
+  hasNegativeBalance: boolean;
+}
+
 export interface SupportSettings {
   telegramEnabled: boolean;
   telegramUsername: string | null;

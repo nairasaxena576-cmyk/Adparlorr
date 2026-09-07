@@ -29,6 +29,7 @@ import type {
   WorkbenchState,
   WorkbenchReadiness,
   SubmitWorkbenchResult,
+  TrainingOverviewRow,
 } from '@/types';
 
 type AuthStatus = 'idle' | 'loading' | 'authenticated' | 'unauthenticated';
@@ -109,6 +110,11 @@ interface AppState {
   adminCreditUser: (userId: string, amount: number) => Promise<ActionResult>;
   adminResetUserTasks: (userId: string) => Promise<ActionResult>;
   adminGrantTier: (userId: string, tier: 'Silver' | 'Gold' | 'Platinum') => Promise<ActionResult>;
+
+  adminTrainingOverview: TrainingOverviewRow[];
+  fetchAdminTrainingOverview: () => Promise<void>;
+  adminConfirmTrainingFunding: (referralId: string) => Promise<ActionResult>;
+  adminResolveNegativeBalance: (userId: string) => Promise<ActionResult>;
 
   fetchSupportSettings: () => Promise<void>;
   fetchAdminSupportSettings: () => Promise<void>;
@@ -203,6 +209,7 @@ export const useStore = create<AppState>()((set, get) => ({
   transactions: [],
   referralsData: null,
   adminUsers: [],
+  adminTrainingOverview: [],
   supportSettings: null,
   cryptoAssets: [],
   adminCryptoAssets: [],
@@ -396,6 +403,31 @@ export const useStore = create<AppState>()((set, get) => ({
       return { ok: true };
     } catch (err) {
       return { ok: false, error: errorMessage(err, 'Failed to unlock tier.') };
+    }
+  },
+
+  fetchAdminTrainingOverview: async () => {
+    const { data } = await api.get<{ rows: TrainingOverviewRow[] }>('/api/admin/training-overview');
+    set({ adminTrainingOverview: data.rows });
+  },
+
+  adminConfirmTrainingFunding: async (referralId) => {
+    try {
+      await api.post(`/api/admin/referrals/${referralId}/confirm-funding`);
+      await get().fetchAdminTrainingOverview();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err, 'Failed to confirm training funding.') };
+    }
+  },
+
+  adminResolveNegativeBalance: async (userId) => {
+    try {
+      await api.post(`/api/admin/users/${userId}/resolve-negative-balance`);
+      await get().fetchAdminTrainingOverview();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err, 'Failed to resolve negative balance.') };
     }
   },
 

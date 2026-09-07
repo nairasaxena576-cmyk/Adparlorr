@@ -15,6 +15,7 @@ import { Training } from '@/pages/Training';
 import { Admin } from '@/pages/Admin';
 import { AdminTrainingTasks } from '@/pages/admin/TrainingTasks';
 import { AdminTrainingSubmissions } from '@/pages/admin/TrainingSubmissions';
+import { AdminTrainingReferrals } from '@/pages/admin/TrainingReferrals';
 import { AdminProductManagement } from '@/pages/admin/ProductManagement';
 import { useStore } from '@/store/useStore';
 
@@ -46,6 +47,7 @@ function App() {
         <Route path="/admin/products" element={<AdminProductManagement />} />
         <Route path="/admin/training" element={<AdminTrainingTasks />} />
         <Route path="/admin/training/submissions" element={<AdminTrainingSubmissions />} />
+        <Route path="/admin/training/referrals" element={<AdminTrainingReferrals />} />
       </Routes>
     </div>
   );
