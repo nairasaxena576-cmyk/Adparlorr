@@ -11,6 +11,7 @@ export function Register() {
   const showToast = useToast();
 
   const [fullName, setFullName] = useState('');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [referralCode, setReferralCode] = useState('');
@@ -20,8 +21,16 @@ export function Register() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!fullName.trim() || !email.trim() || !password.trim()) {
+    if (!fullName.trim() || !username.trim() || !email.trim() || !password.trim()) {
       setError('All fields are required.');
+      return;
+    }
+    if (username.trim().length < 3) {
+      setError('Username must be at least 3 characters.');
+      return;
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(username.trim())) {
+      setError('Username can only contain letters, numbers, underscores, and hyphens.');
       return;
     }
     if (password.length < 6) {
@@ -29,7 +38,7 @@ export function Register() {
       return;
     }
     setSubmitting(true);
-    const result = await register({ fullName, email, password, referralCode });
+    const result = await register({ fullName, username, email, password, referralCode });
     setSubmitting(false);
     if (!result.ok) {
       setError(result.error || 'Registration failed.');
@@ -80,6 +89,13 @@ export function Register() {
                   className="input-base mt-1.5" placeholder="Jane Doe" />
               </div>
               <div>
+                <label htmlFor="username" className="block text-sm font-medium text-ink-200">Username</label>
+                <input id="username" name="username" type="text" required value={username}
+                  autoComplete="username"
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="input-base mt-1.5" placeholder="janedoe" />
+              </div>
+              <div>
                 <label htmlFor="email" className="block text-sm font-medium text-ink-200">Email</label>
                 <input id="email" type="email" required value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -88,6 +104,7 @@ export function Register() {
               <div>
                 <label htmlFor="password" className="block text-sm font-medium text-ink-200">Password</label>
                 <input id="password" type="password" required value={password}
+                  autoComplete="new-password"
                   onChange={(e) => setPassword(e.target.value)}
                   className="input-base mt-1.5" placeholder="••••••••" />
               </div>

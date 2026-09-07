@@ -36,7 +36,7 @@ export function Admin() {
 
   const isAdmin = currentUser?.role === 'ADMIN';
 
-  const [email, setEmail] = useState('');
+  const [loginUsername, setLoginUsername] = useState('');
   const [pass, setPass] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -162,7 +162,7 @@ export function Admin() {
     e.preventDefault();
     setError('');
     setSubmitting(true);
-    const result = await login(email, pass);
+    const result = await login(loginUsername, pass);
     if (!result.ok) {
       setSubmitting(false);
       setError(result.error || 'Invalid credentials.');
@@ -176,7 +176,7 @@ export function Admin() {
     }
     setSubmitting(false);
     showToast('Admin login successful.', 'success');
-    setEmail('');
+    setLoginUsername('');
     setPass('');
   };
 
@@ -246,10 +246,10 @@ export function Admin() {
 
             <form onSubmit={handleLogin} className="mt-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-ink-200">Email</label>
-                <input type="email" required value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="input-base mt-1.5" placeholder="admin@example.com" />
+                <label className="block text-sm font-medium text-ink-200">Username</label>
+                <input type="text" autoComplete="username" required value={loginUsername}
+                  onChange={(e) => setLoginUsername(e.target.value)}
+                  className="input-base mt-1.5" placeholder="admin" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-ink-200">Password</label>

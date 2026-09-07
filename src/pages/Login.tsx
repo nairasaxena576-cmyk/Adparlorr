@@ -10,7 +10,7 @@ export function Login() {
   const login = useStore((s) => s.login);
   const showToast = useToast();
 
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -19,7 +19,7 @@ export function Login() {
     e.preventDefault();
     setError('');
     setSubmitting(true);
-    const result = await login(email, password);
+    const result = await login(username, password);
     setSubmitting(false);
     if (!result.ok) {
       setError(result.error || 'Login failed.');
@@ -45,14 +45,16 @@ export function Login() {
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <div>
-              <label htmlFor="loginEmail" className="block text-sm font-medium text-ink-200">Email</label>
-              <input id="loginEmail" type="email" required value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="input-base mt-1.5" placeholder="jane@example.com" />
+              <label htmlFor="loginUsername" className="block text-sm font-medium text-ink-200">Username</label>
+              <input id="loginUsername" name="username" type="text" required value={username}
+                autoComplete="username"
+                onChange={(e) => setUsername(e.target.value)}
+                className="input-base mt-1.5" placeholder="janedoe" />
             </div>
             <div>
               <label htmlFor="loginPassword" className="block text-sm font-medium text-ink-200">Password</label>
-              <input id="loginPassword" type="password" required value={password}
+              <input id="loginPassword" name="password" type="password" required value={password}
+                autoComplete="current-password"
                 onChange={(e) => setPassword(e.target.value)}
                 className="input-base mt-1.5" placeholder="••••••••" />
             </div>

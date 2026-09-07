@@ -3,6 +3,9 @@ export type Role = 'ADMIN' | 'USER';
 export interface User {
   id: string;
   fullName: string;
+  // The login identifier (see Login.tsx) — email remains a separate,
+  // required profile field, no longer used to log in.
+  username: string;
   email: string;
   role: Role;
   referralCode: string;

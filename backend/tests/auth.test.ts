@@ -16,18 +16,18 @@ describe('auth', () => {
 
     const res = await request(app)
       .post('/api/auth/register')
-      .send({ fullName: 'Another', email, password: 'password123' });
+      .send({ fullName: 'Another', username: `dupuser${Date.now()}`, email, password: 'password123' });
 
     expect(res.status).toBe(409);
     expect(res.body.success).toBe(false);
   });
 
   it('rejects login with the wrong password', async () => {
-    const { email } = await registerAndLogin({ password: 'correctPass1' });
+    const { username } = await registerAndLogin({ password: 'correctPass1' });
 
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ email, password: 'wrongPassword' });
+      .send({ username, password: 'wrongPassword' });
 
     expect(res.status).toBe(401);
     expect(res.body.success).toBe(false);

@@ -17,7 +17,7 @@ export function AdminTrainingSubmissions() {
   const showToast = useToast();
 
   const isAdmin = currentUser?.role === 'ADMIN';
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [pass, setPass] = useState('');
   const [loginError, setLoginError] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
@@ -26,7 +26,7 @@ export function AdminTrainingSubmissions() {
     e.preventDefault();
     setLoginError('');
     setLoggingIn(true);
-    const result = await login(email, pass);
+    const result = await login(username, pass);
     if (!result.ok) {
       setLoggingIn(false);
       setLoginError(result.error || 'Invalid credentials.');
@@ -66,9 +66,9 @@ export function AdminTrainingSubmissions() {
             </div>
             <form onSubmit={handleLogin} className="mt-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-ink-200">Email</label>
-                <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-                  className="input-base mt-1.5" placeholder="admin@example.com" />
+                <label className="block text-sm font-medium text-ink-200">Username</label>
+                <input type="text" autoComplete="username" required value={username} onChange={(e) => setUsername(e.target.value)}
+                  className="input-base mt-1.5" placeholder="admin" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-ink-200">Password</label>

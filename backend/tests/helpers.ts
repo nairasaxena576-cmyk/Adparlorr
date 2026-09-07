@@ -13,13 +13,23 @@ export function extractCsrfToken(res: request.Response): string {
 }
 
 let counter = 0;
-function uniqueEmail(): string {
+function uniqueSuffix(): string {
   counter += 1;
-  return `user${Date.now()}_${counter}@example.test`;
+  return `${Date.now()}_${counter}`;
+}
+function uniqueEmail(): string {
+  return `user${uniqueSuffix()}@example.test`;
+}
+// Must satisfy the real registration format (usernameSchema in
+// auth.schema.ts: lowercase letters/digits/underscore/hyphen only) —
+// "user<digits>_<digits>" already does, no extra sanitizing needed.
+function uniqueUsername(): string {
+  return `user${uniqueSuffix()}`;
 }
 
 interface RegisterOverrides {
   fullName?: string;
+  username?: string;
   email?: string;
   password?: string;
   referralCode?: string;
@@ -27,22 +37,25 @@ interface RegisterOverrides {
 
 export async function registerAndLogin(overrides: RegisterOverrides = {}) {
   const agent = request.agent(app);
+  const username = overrides.username ?? uniqueUsername();
   const email = overrides.email ?? uniqueEmail();
   const password = overrides.password ?? 'password123';
 
   const res = await agent.post('/api/auth/register').send({
     fullName: overrides.fullName ?? 'Test User',
+    username,
     email,
     password,
     ...(overrides.referralCode ? { referralCode: overrides.referralCode } : {}),
   });
 
   const csrfToken = extractCsrfToken(res);
-  return { agent, csrfToken, email, password, body: res.body };
+  return { agent, csrfToken, username, email, password, body: res.body };
 }
 
 export async function createAdminAndLogin() {
   const agent = request.agent(app);
+  const username = uniqueUsername();
   const email = uniqueEmail();
   const password = 'adminPass123';
   const passwordHash = await hashPassword(password);
@@ -50,6 +63,7 @@ export async function createAdminAndLogin() {
   await prisma.user.create({
     data: {
       fullName: 'Admin Test',
+      username,
       email,
       passwordHash,
       role: 'ADMIN',
@@ -57,9 +71,9 @@ export async function createAdminAndLogin() {
     },
   });
 
-  const res = await agent.post('/api/auth/login').send({ email, password });
+  const res = await agent.post('/api/auth/login').send({ username, password });
   const csrfToken = extractCsrfToken(res);
-  return { agent, csrfToken, email };
+  return { agent, csrfToken, username, email };
 }
 
 let courseCounter = 0;

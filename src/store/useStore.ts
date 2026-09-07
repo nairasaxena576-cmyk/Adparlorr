@@ -86,11 +86,12 @@ interface AppState {
   bootstrapAuth: () => Promise<void>;
   register: (data: {
     fullName: string;
+    username: string;
     email: string;
     password: string;
     referralCode: string;
   }) => Promise<ActionResult>;
-  login: (email: string, password: string) => Promise<ActionResult>;
+  login: (username: string, password: string) => Promise<ActionResult>;
   logout: () => Promise<void>;
   getCurrentUser: () => User | null;
 
@@ -274,9 +275,9 @@ export const useStore = create<AppState>()((set, get) => ({
     }
   },
 
-  login: async (email, password) => {
+  login: async (username, password) => {
     try {
-      const { data } = await api.post<{ user: User }>('/api/auth/login', { email, password });
+      const { data } = await api.post<{ user: User }>('/api/auth/login', { username, password });
       set({ currentUser: data.user, authStatus: 'authenticated' });
       return { ok: true };
     } catch (err) {

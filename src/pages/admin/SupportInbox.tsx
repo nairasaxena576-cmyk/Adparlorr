@@ -27,7 +27,7 @@ export function AdminSupportInbox() {
   const showToast = useToast();
 
   const isAdmin = currentUser?.role === 'ADMIN';
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [pass, setPass] = useState('');
   const [loginError, setLoginError] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
@@ -36,7 +36,7 @@ export function AdminSupportInbox() {
     e.preventDefault();
     setLoginError('');
     setLoggingIn(true);
-    const result = await login(email, pass);
+    const result = await login(username, pass);
     if (!result.ok) {
       setLoggingIn(false);
       setLoginError(result.error || 'Invalid credentials.');
@@ -63,14 +63,15 @@ export function AdminSupportInbox() {
             <p className="mt-1 text-center text-sm text-slate-400">Authorized personnel only.</p>
             <form onSubmit={handleLogin} className="mt-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300">Email</label>
+                <label className="block text-sm font-medium text-slate-300">Username</label>
                 <input
-                  type="email"
+                  type="text"
+                  autoComplete="username"
                   required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
                   className="mt-1.5 w-full rounded-lg border border-white/10 bg-[#0b1330] px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
-                  placeholder="admin@example.com"
+                  placeholder="admin"
                 />
               </div>
               <div>

@@ -7,6 +7,13 @@ export function findUserByEmail(email: string, client: Client = prisma) {
   return client.user.findUnique({ where: { email: email.toLowerCase() } });
 }
 
+// username is always stored normalized (trimmed, lowercased) — see
+// auth.schema.ts/auth.service.ts — so a plain equality lookup on that
+// normalized form is what makes lookups case-insensitive.
+export function findUserByUsername(username: string, client: Client = prisma) {
+  return client.user.findUnique({ where: { username } });
+}
+
 export function findUserById(id: string, client: Client = prisma) {
   return client.user.findUnique({ where: { id } });
 }

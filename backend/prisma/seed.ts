@@ -206,6 +206,22 @@ async function seedSmcCourse() {
   );
 }
 
+// Same deterministic derivation as the username-backfill migration
+// (20260908020000_add_username): the email local-part, sanitized to the
+// same character set the registration form now enforces, with a numeric
+// suffix appended only if that candidate happens to already be taken.
+async function deriveUniqueUsername(email: string): Promise<string> {
+  const base = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 30) || 'admin';
+  let candidate = base;
+  let suffix = 0;
+  while (true) {
+    const existing = await prisma.user.findUnique({ where: { username: candidate } });
+    if (!existing) return candidate;
+    suffix += 1;
+    candidate = `${base}-${suffix}`;
+  }
+}
+
 async function seedAdmin() {
   const email = process.env.ADMIN_EMAIL;
   const password = process.env.ADMIN_INITIAL_PASSWORD;
@@ -223,17 +239,19 @@ async function seedAdmin() {
 
   const passwordHash = await bcrypt.hash(password, 12);
   const referralCode = Math.random().toString(36).slice(2, 8).toUpperCase();
+  const username = await deriveUniqueUsername(email);
 
   await prisma.user.create({
     data: {
       fullName: 'Training Administrator',
+      username,
       email: email.toLowerCase(),
       passwordHash,
       role: 'ADMIN',
       referralCode,
     },
   });
-  console.log(`Seeded admin account for ${email}.`);
+  console.log(`Seeded admin account for ${email} (username: ${username}).`);
 }
 
 async function main() {

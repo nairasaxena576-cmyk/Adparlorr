@@ -7,6 +7,7 @@ import { signAuthToken } from '../utils/jwt';
 import {
   createUser,
   findUserByEmail,
+  findUserByUsername,
   findUserByReferralCode,
   incrementSessionVersion,
 } from '../repositories/user.repository';
@@ -15,6 +16,7 @@ import { createReferral } from '../repositories/referral.repository';
 export interface SafeUser {
   id: string;
   fullName: string;
+  username: string;
   email: string;
   role: Role;
   referralCode: string;
@@ -36,6 +38,7 @@ export function toSafeUser(user: User): SafeUser {
   return {
     id: user.id,
     fullName: user.fullName,
+    username: user.username,
     email: user.email,
     role: user.role,
     referralCode: user.referralCode,
@@ -71,15 +74,20 @@ async function generateUniqueReferralCode(): Promise<string> {
 
 export interface RegisterInput {
   fullName: string;
+  username: string;
   email: string;
   password: string;
   referralCode?: string;
 }
 
 export async function registerUser(input: RegisterInput): Promise<{ user: SafeUser; token: string }> {
-  const existing = await findUserByEmail(input.email);
-  if (existing) {
+  const existingEmail = await findUserByEmail(input.email);
+  if (existingEmail) {
     throw AppError.conflict('An account with this email already exists.');
+  }
+  const existingUsername = await findUserByUsername(input.username);
+  if (existingUsername) {
+    throw AppError.conflict('This username is already taken.');
   }
 
   const passwordHash = await hashPassword(input.password);
@@ -94,6 +102,7 @@ export async function registerUser(input: RegisterInput): Promise<{ user: SafeUs
     const created = await createUser(
       {
         fullName: input.fullName,
+        username: input.username,
         email: input.email,
         passwordHash,
         referralCode,
@@ -116,16 +125,20 @@ export async function registerUser(input: RegisterInput): Promise<{ user: SafeUs
 }
 
 export interface LoginInput {
-  email: string;
+  username: string;
   password: string;
 }
 
+// Never trusts anything but username+password from the client — no userId,
+// email, or role is ever read from the request body here (see
+// auth.controller.ts, which passes the whole validated req.body through,
+// and loginSchema, which only recognizes these two fields).
 export async function loginUser(input: LoginInput): Promise<{ user: SafeUser; token: string }> {
-  const user = await findUserByEmail(input.email);
-  if (!user) throw AppError.unauthorized('Invalid email or password.');
+  const user = await findUserByUsername(input.username);
+  if (!user) throw AppError.unauthorized('Invalid username or password.');
 
   const valid = await verifyPassword(input.password, user.passwordHash);
-  if (!valid) throw AppError.unauthorized('Invalid email or password.');
+  if (!valid) throw AppError.unauthorized('Invalid username or password.');
 
   const token = signAuthToken({ sub: user.id, role: user.role, sessionVersion: user.sessionVersion });
   return { user: toSafeUser(user), token };
