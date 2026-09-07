@@ -100,8 +100,6 @@ interface AppState {
   submitWorkbenchProduct: (
     productId: string
   ) => Promise<{ ok: boolean; error?: string; result?: SubmitWorkbenchResult }>;
-  // Demo-only shortfall resolution — never calls the real deposit API.
-  resolveDemoShortfall: () => Promise<ActionResult>;
 
   fetchTransactions: () => Promise<void>;
   fetchCryptoAssets: () => Promise<void>;
@@ -342,18 +340,6 @@ export const useStore = create<AppState>()((set, get) => ({
       return { ok: true, result: data };
     } catch (err) {
       return { ok: false, error: errorMessage(err, 'Submission failed.') };
-    }
-  },
-
-  resolveDemoShortfall: async () => {
-    try {
-      const { data } = await api.post<{ user: User; workbench: WorkbenchState }>(
-        '/api/orders/resolve-demo-shortfall'
-      );
-      set({ currentUser: data.user, workbench: data.workbench });
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: errorMessage(err, 'Failed to resolve the demo shortfall.') };
     }
   },
 

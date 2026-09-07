@@ -157,9 +157,9 @@ export async function approveDeposit(depositId: string, adminId: string): Promis
   const amount = Number(deposit.amount);
   // Real deposits only ever affect the real Wallet balance/totalDeposits —
   // they have no bearing on the workbench's separate demo simulation
-  // (User.workbenchBalance/isMerged), which can only be resolved via
-  // order.service.ts's resolveDemoShortfall(). See schema.prisma's
-  // workbenchBalance doc comment for the full separation rationale.
+  // (User.workbenchBalance/isMerged) — see order.service.ts and
+  // schema.prisma's workbenchBalance doc comment for the full separation
+  // rationale.
   const updated = await prisma.$transaction(async (tx) => {
     await updateTransactionStatus(deposit.transactionId, 'COMPLETED', tx);
     await updateUser(

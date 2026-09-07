@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  AlertTriangle,
   ArrowRight,
   CheckCircle2,
   Clock,
@@ -19,10 +18,8 @@ export function Orders() {
   const workbench = useStore((s) => s.workbench);
   const fetchWorkbench = useStore((s) => s.fetchWorkbench);
   const submitWorkbenchProduct = useStore((s) => s.submitWorkbenchProduct);
-  const resolveDemoShortfall = useStore((s) => s.resolveDemoShortfall);
   const showToast = useToast();
   const [submitting, setSubmitting] = useState(false);
-  const [resolving, setResolving] = useState(false);
 
   useEffect(() => {
     fetchWorkbench();
@@ -36,26 +33,12 @@ export function Orders() {
       showToast(result.error || 'Submission failed.', 'error');
       return;
     }
-    const { status, commissionEarned, workbench: next } = result.result;
+    const { status, commissionEarned } = result.result;
     if (status === 'MERGE') {
       showToast(`Merged product completed — simulated commission +$${commissionEarned.toFixed(2)}.`, 'success');
     } else {
       showToast(`Product submitted — simulated commission +$${commissionEarned.toFixed(2)}.`, 'success');
     }
-    if (next.status === 'SHORTFALL') {
-      showToast('Your demo working balance is negative. Resolve it with demo credits to continue.', 'info');
-    }
-  };
-
-  const handleResolve = async () => {
-    setResolving(true);
-    const result = await resolveDemoShortfall();
-    setResolving(false);
-    if (!result.ok) {
-      showToast(result.error || 'Failed to resolve the demo shortfall.', 'error');
-      return;
-    }
-    showToast('Demo balance shortfall resolved with simulated credits.', 'success');
   };
 
   if (!workbench) {
@@ -161,9 +144,6 @@ export function Orders() {
             nextTier={workbench.nextTier}
             depositsNeeded={workbench.depositsNeededForNextTier}
           />
-        )}
-        {status === 'SHORTFALL' && (
-          <ShortfallCard shortfall={workbench.shortfall} resolving={resolving} onResolve={handleResolve} />
         )}
         {status === 'COMPLETED' && (
           <CompletedCard todaysCommission={workbench.todaysCommission} subsidy={workbench.subsidy} />
@@ -305,41 +285,6 @@ function MergeCard({
         className="mt-5 w-full rounded-lg bg-amber-500 py-3.5 text-sm font-semibold text-white transition hover:bg-amber-600 disabled:opacity-60"
       >
         {submitting ? 'Submitting…' : 'Submit'}
-      </button>
-    </div>
-  );
-}
-
-function ShortfallCard({
-  shortfall,
-  resolving,
-  onResolve,
-}: {
-  shortfall: number;
-  resolving: boolean;
-  onResolve: () => void;
-}) {
-  return (
-    <div className="card-c border-red-300 bg-red-50 text-center">
-      <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-red-500/15">
-        <AlertTriangle className="h-7 w-7 text-red-500" />
-      </div>
-      <h3 className="mt-4 text-lg font-bold text-red-700">Demo Balance Shortfall</h3>
-      <p className="mt-2 text-3xl font-extrabold text-red-600">-${shortfall.toFixed(2)}</p>
-      <p className="mt-3 text-sm leading-relaxed text-ink-600">
-        The simulated working balance is insufficient to complete this product. This is a demo-only shortfall —
-        it does not require any real cryptocurrency or payment.
-      </p>
-      <div className="mt-4 rounded-lg bg-white/70 p-3">
-        <p className="text-xs text-ink-500">Demo Credits Required</p>
-        <p className="text-lg font-bold text-ink-900">${shortfall.toFixed(2)}</p>
-      </div>
-      <button
-        onClick={onResolve}
-        disabled={resolving}
-        className="btn-brand mt-5 w-full justify-center py-3.5 disabled:opacity-60"
-      >
-        {resolving ? 'Resolving…' : 'Resolve with Demo Credits'} <ArrowRight className="h-4 w-4" />
       </button>
     </div>
   );

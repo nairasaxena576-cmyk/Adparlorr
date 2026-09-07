@@ -79,11 +79,7 @@ describe('workbench — fixed band size per tier (never derived from catalog siz
 
   it('tracks global completed/total correctly through a full Bronze band, ending at BRONZE_BAND_SIZE/grandTotal', async () => {
     await createFixtureWorkbenchSet(BRONZE_BAND_SIZE);
-    const { agent, csrfToken, body } = await registerAndLogin();
-    // High enough to absorb the 3 merge events naturally occurring inside
-    // the Bronze band (orders 10/20/30) without ever going negative — this
-    // test is only about completed/total tracking, not shortfall behavior.
-    await prisma.user.update({ where: { id: body.data.user.id }, data: { workbenchBalance: 100_000 } });
+    const { agent, csrfToken } = await registerAndLogin();
 
     let completed = 0;
     while (completed < BRONZE_BAND_SIZE - 1) {
@@ -127,6 +123,9 @@ describe('workbench — commission (server-side, simulated)', () => {
     expect(res.body.data.status).toBe('NORMAL');
     expect(res.body.data.commissionEarned).toBeCloseTo(1.0, 5);
     expect(res.body.data.user.totalEarnings).toBeCloseTo(1.0, 5);
+    // The product's $100 price is never deducted — only the $1 commission
+    // is credited to the demo workbench ledger.
+    expect(res.body.data.user.workbenchBalance).toBeCloseTo(1.0, 5);
   });
 
   it('computes merged commission as exactly 10% of the combined bundled value', async () => {
@@ -134,7 +133,7 @@ describe('workbench — commission (server-side, simulated)', () => {
     const { agent, csrfToken, body } = await registerAndLogin();
     await prisma.user.update({
       where: { id: body.data.user.id },
-      data: { completedOrders: 9, workbenchBalance: 1000 }, // 1 short of the order-10 milestone
+      data: { completedOrders: 9 }, // 1 short of the order-10 milestone
     });
 
     const state = await agent.get('/api/orders/workbench');
@@ -147,6 +146,9 @@ describe('workbench — commission (server-side, simulated)', () => {
     expect(res.body.data.status).toBe('MERGE');
     expect(res.body.data.commissionEarned).toBeCloseTo(30, 5);
     expect(res.body.data.submittedCount).toBe(3);
+    // The $300 combined price is never deducted — only the $30 (10%)
+    // commission is credited to the demo workbench ledger.
+    expect(res.body.data.user.workbenchBalance).toBeCloseTo(30, 5);
   });
 
   it('never trusts a client-supplied commission amount', async () => {
@@ -168,7 +170,6 @@ describe('workbench — Merged Product: exactly 3, fixed at orders 10/20/30', ()
   it('fires exactly at order 10, 20, and 30 — never before, never after 30, never a 4th time', async () => {
     await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 100);
     const { agent, csrfToken, body } = await registerAndLogin();
-    await prisma.user.update({ where: { id: body.data.user.id }, data: { workbenchBalance: 100_000 } });
 
     const mergeOrdersSeen: number[] = [];
     let i = 0;
@@ -385,29 +386,39 @@ describe('workbench — continuous tier progression (never resets)', () => {
   });
 });
 
-describe('workbench — simulated negative balance (demo-only, never real crypto)', () => {
-  it('a merged product can drive the demo working balance negative, producing an exact shortfall', async () => {
-    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 100);
-    const { agent, csrfToken, body } = await registerAndLogin();
-    await prisma.user.update({
-      where: { id: body.data.user.id },
-      data: { completedOrders: 9, workbenchBalance: 40 },
-    });
+describe('workbench — corrected accounting (commission-only, never a manufactured deficit)', () => {
+  it('a normal order credits only its 1% commission — the demo balance never goes negative', async () => {
+    const products = await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 100);
+    const { agent, csrfToken } = await registerAndLogin();
 
-    const state = await agent.get('/api/orders/workbench');
-    const first = state.body.data.workbench.mergeBundle.products[0];
-
-    const res = await agent.post('/api/orders').set('X-CSRF-Token', csrfToken).send({ productId: first.id });
-    // 40 + 30 - 300 = -230
-    expect(res.body.data.user.workbenchBalance).toBeCloseTo(-230, 5);
-    expect(res.body.data.workbench.status).toBe('SHORTFALL');
-    expect(res.body.data.workbench.shortfall).toBeCloseTo(230, 5);
+    const res = await agent.post('/api/orders').set('X-CSRF-Token', csrfToken).send({ productId: products[0].id });
+    expect(res.status).toBe(201);
+    // $100 price is never deducted — only the $1 (1%) commission is credited.
+    expect(res.body.data.user.workbenchBalance).toBeCloseTo(1, 5);
+    expect(res.body.data.workbench.status).not.toBe('TIER_LOCKED');
 
     // The REAL Wallet balance must be completely untouched by this.
     expect(res.body.data.user.balance).toBe(0);
   });
 
-  it('a simulated shortfall never creates a real Deposit or Transaction record', async () => {
+  it('a Merged Product credits only its 10% combined commission — no deficit, no lock', async () => {
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 100);
+    const { agent, csrfToken, body } = await registerAndLogin();
+    await prisma.user.update({ where: { id: body.data.user.id }, data: { completedOrders: 9 } });
+
+    const state = await agent.get('/api/orders/workbench');
+    const first = state.body.data.workbench.mergeBundle.products[0];
+
+    const res = await agent.post('/api/orders').set('X-CSRF-Token', csrfToken).send({ productId: first.id });
+    // $300 combined price is never deducted — only the $30 (10%) commission is credited.
+    expect(res.body.data.user.workbenchBalance).toBeCloseTo(30, 5);
+    expect(res.body.data.workbench.status).not.toBe('TIER_LOCKED');
+
+    // The REAL Wallet balance must be completely untouched by this.
+    expect(res.body.data.user.balance).toBe(0);
+  });
+
+  it('never creates a real Deposit or Transaction record from ordinary task completion', async () => {
     await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 100);
     const { agent, csrfToken, body } = await registerAndLogin();
 
@@ -421,75 +432,58 @@ describe('workbench — simulated negative balance (demo-only, never real crypto
     expect(transactions).toHaveLength(0);
   });
 
-  it('blocks the next submission while the demo balance is negative', async () => {
-    // Create products we will use for submission
+  it('never blocks the next submission — there is no negative-balance gate anymore', async () => {
     const products = await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 100);
     const { agent, csrfToken } = await registerAndLogin();
 
-    // Submit first product - this will make the workbench balance negative
-    await agent
-      .post('/api/orders')
-      .set('X-CSRF-Token', csrfToken)
-      .send({ productId: products[0].id });
+    await agent.post('/api/orders').set('X-CSRF-Token', csrfToken).send({ productId: products[0].id });
 
-    // Now try to submit the second product - should be blocked due to negative balance
-    const blocked = await agent.post('/api/orders').set('X-CSRF-Token', csrfToken).send({
-      productId: products[1].id
-    });
-    expect(blocked.status).toBe(403);
-  });
-});
-
-describe('workbench — demo-credit shortfall resolution (simulation only)', () => {
-  it('resolves a simulated shortfall instantly with demo credits, touching only workbenchBalance', async () => {
-    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 100);
-    const { agent, csrfToken, body } = await registerAndLogin();
-
-    const state = await agent.get('/api/orders/workbench');
-    await agent
-      .post('/api/orders')
-      .set('X-CSRF-Token', csrfToken)
-      .send({ productId: state.body.data.workbench.currentProduct.id });
-
-    const beforeResolve = await agent.get('/api/orders/workbench');
-    expect(beforeResolve.body.data.workbench.status).toBe('SHORTFALL');
-
-    const resolve = await agent.post('/api/orders/resolve-demo-shortfall').set('X-CSRF-Token', csrfToken);
-    expect(resolve.status).toBe(200);
-    expect(resolve.body.data.user.workbenchBalance).toBe(0);
-    expect(resolve.body.data.workbench.status).not.toBe('SHORTFALL');
-
-    // Real balance/totalDeposits/isMerged history must be completely
-    // unaffected — no Deposit ever existed for this user.
-    const me = await agent.get('/api/auth/me');
-    expect(me.body.data.user.balance).toBe(0);
-    expect(me.body.data.user.totalDeposits).toBe(0);
-    const deposits = await prisma.deposit.findMany({ where: { userId: body.data.user.id } });
-    expect(deposits).toHaveLength(0);
+    const next = await agent.post('/api/orders').set('X-CSRF-Token', csrfToken).send({ productId: products[1].id });
+    expect(next.status).toBe(201);
   });
 
-  it('rejects resolving when there is no shortfall to resolve', async () => {
+  it('a customer cannot spoof workbenchBalance directly — no endpoint accepts a client-supplied value', async () => {
+    const products = await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 100);
     const { agent, csrfToken } = await registerAndLogin();
-    const res = await agent.post('/api/orders/resolve-demo-shortfall').set('X-CSRF-Token', csrfToken);
-    expect(res.status).toBe(409);
+
+    // submitOrderSchema only ever accepts { productId } — a supplied
+    // workbenchBalance/balance is silently stripped, never applied.
+    const res = await agent
+      .post('/api/orders')
+      .set('X-CSRF-Token', csrfToken)
+      .send({ productId: products[0].id, workbenchBalance: 999999, balance: 999999 });
+    expect(res.status).toBe(201);
+    expect(res.body.data.user.workbenchBalance).toBeCloseTo(1, 5);
+    expect(res.body.data.user.balance).toBe(0);
   });
 
-  it('a customer cannot fake the demo balance directly — only the resolve endpoint can clear a shortfall', async () => {
+  it('a fresh customer can progress through a full Bronze band (including all 3 merges) purely from task completion, with no resolution mechanism ever needed', async () => {
     await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 100);
     const { agent, csrfToken } = await registerAndLogin();
-    const state = await agent.get('/api/orders/workbench');
-    await agent
-      .post('/api/orders')
-      .set('X-CSRF-Token', csrfToken)
-      .send({ productId: state.body.data.workbench.currentProduct.id });
 
-    // No endpoint accepts a client-supplied balance/workbenchBalance value
-    // anywhere — submitOrderSchema only ever accepts { productId }.
-    const attempt = await agent
-      .post('/api/orders')
-      .set('X-CSRF-Token', csrfToken)
-      .send({ productId: 'anything', workbenchBalance: 5000, balance: 5000 });
-    expect(attempt.status).not.toBe(201);
+    let completed = 0;
+    let expectedBalance = 0;
+    while (completed < BRONZE_BAND_SIZE) {
+      const state = await agent.get('/api/orders/workbench');
+      const wb = state.body.data.workbench;
+      // No SHORTFALL/lock state exists anymore — every step must be
+      // immediately actionable or a legitimate band/tier transition.
+      expect(['NORMAL', 'MERGE', 'TIER_LOCKED', 'COMPLETED']).toContain(wb.status);
+      if (wb.status === 'TIER_LOCKED' || wb.status === 'COMPLETED') break;
+
+      const isMerge = wb.status === 'MERGE';
+      const productId = isMerge ? wb.mergeBundle.products[0].id : wb.currentProduct.id;
+      const res = await agent.post('/api/orders').set('X-CSRF-Token', csrfToken).send({ productId });
+      expect(res.status).toBe(201);
+      expect(res.body.data.user.workbenchBalance).toBeGreaterThanOrEqual(0);
+      expectedBalance += res.body.data.commissionEarned;
+      completed += res.body.data.submittedCount;
+    }
+
+    expect(completed).toBe(BRONZE_BAND_SIZE);
+    const final = await agent.get('/api/orders/workbench');
+    expect(final.body.data.workbench.workbenchBalance).toBeCloseTo(expectedBalance, 5);
+    expect(final.body.data.workbench.workbenchBalance).toBeCloseTo(final.body.data.workbench.totalEarnings, 5);
   });
 });
 
@@ -519,21 +513,21 @@ describe('workbench — real deposit system stays fully separate', () => {
     expect(me.body.data.user.workbenchBalance).toBe(0); // simulation untouched
   });
 
-  it('a simulated workbench shortfall does not block or alter the real deposit flow, and vice versa', async () => {
+  it('a workbench commission credit does not alter the real deposit flow, and vice versa', async () => {
     await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 100);
     const admin = await createAdminAndLogin();
     await enableUsdt(admin);
     const user = await registerAndLogin();
     await completeTraining(user);
 
-    // Create a workbench shortfall.
+    // Earn a workbench commission.
     const state = await user.agent.get('/api/orders/workbench');
     await user.agent
       .post('/api/orders')
       .set('X-CSRF-Token', user.csrfToken)
       .send({ productId: state.body.data.workbench.currentProduct.id });
-    const shortfallCheck = await user.agent.get('/api/orders/workbench');
-    expect(shortfallCheck.body.data.workbench.status).toBe('SHORTFALL');
+    const afterOrder = await user.agent.get('/api/orders/workbench');
+    expect(afterOrder.body.data.workbench.workbenchBalance).toBeCloseTo(1, 5);
 
     // The real deposit flow works exactly as if the workbench didn't exist.
     const depositRes = await user.agent
@@ -542,16 +536,15 @@ describe('workbench — real deposit system stays fully separate', () => {
       .send({ assetCode: 'USDT', amount: 200 });
     expect(depositRes.status).toBe(201);
 
-    // Approving that real deposit must NOT resolve the simulated shortfall.
+    // Approving that real deposit must NOT alter the workbench commission ledger.
     const pending = await admin.agent.get('/api/admin/deposits?status=PENDING');
     const depositId = pending.body.data.deposits[0].id;
     await admin.agent.post(`/api/admin/deposits/${depositId}/approve`).set('X-CSRF-Token', admin.csrfToken);
 
-    const stillShortfall = await user.agent.get('/api/orders/workbench');
-    expect(stillShortfall.body.data.workbench.status).toBe('SHORTFALL');
+    const afterDeposit = await user.agent.get('/api/orders/workbench');
+    expect(afterDeposit.body.data.workbench.workbenchBalance).toBeCloseTo(1, 5); // untouched
     const me = await user.agent.get('/api/auth/me');
     expect(me.body.data.user.balance).toBeCloseTo(200, 5); // real deposit credited
-    expect(me.body.data.user.workbenchBalance).toBeLessThan(0); // simulation still negative
   });
 
   it('still enforces the training gate on the real deposit flow, independent of workbench state', async () => {

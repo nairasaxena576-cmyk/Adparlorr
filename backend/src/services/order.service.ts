@@ -34,11 +34,12 @@ import { toSafeUser, type SafeUser } from './auth.service';
 //   Merged product:  commission = combined value * 10%  — fires exactly 3
 //                     times, at cumulative order counts 10/20/30 (see
 //                     SIMULATION.MERGE_ORDER_MILESTONES), never again after.
-//   Every submission (normal or merged) deducts the product's full price
-//   from User.workbenchBalance and adds the commission — this demo balance
-//   can go negative (a "shortfall"), which blocks the *next* submission
-//   until resolveDemoShortfall() is called (see below) — never a real
-//   deposit. User.balance (the real Wallet balance) is never touched here.
+//   Every submission (normal or merged) credits ONLY its commission to
+//   User.workbenchBalance — the product's price is never deducted (there is
+//   no real cost of goods in this simulation, only a commission-earning
+//   task), so this demo ledger is monotonically non-decreasing and can never
+//   go negative from legitimate order completion. User.balance (the real
+//   Wallet balance) is never touched here, in either direction.
 // ---------------------------------------------------------------------------
 
 export interface WorkbenchProductDto {
@@ -65,7 +66,7 @@ export interface MergeBundleDto {
   commission: number;
 }
 
-export type WorkbenchStatus = 'NOT_READY' | 'TIER_LOCKED' | 'SHORTFALL' | 'COMPLETED' | 'MERGE' | 'NORMAL';
+export type WorkbenchStatus = 'NOT_READY' | 'TIER_LOCKED' | 'COMPLETED' | 'MERGE' | 'NORMAL';
 
 export interface WorkbenchState {
   status: WorkbenchStatus;
@@ -84,9 +85,10 @@ export interface WorkbenchState {
   depositsNeededForNextTier: number | null;
   // Demo/simulation-only — entirely separate from the real Wallet balance
   // (User.balance). See order.service.ts / schema.prisma for the full
-  // real-vs-simulated separation.
+  // real-vs-simulated separation. A completed task only ever credits its
+  // commission here (see submitOrder) — the full product price is never
+  // deducted, so this can never go negative from legitimate use.
   workbenchBalance: number;
-  shortfall: number;
   todaysCommission: number;
   totalEarnings: number;
   // Pure display computation (totalEarnings * 20%) — there is no separate
@@ -141,7 +143,6 @@ export async function getWorkbenchState(userId: string): Promise<WorkbenchState>
   const { ready, tier, bandSize, eligibleCount, remaining } = await loadWorkbenchSet(user);
   const nextTier = getNextTier(tier);
   const demoBalance = Number(user.workbenchBalance);
-  const shortfall = demoBalance < 0 ? roundMoney(-demoBalance) : 0;
 
   const commissionAgg = await sumCommissionSince(userId, startOfUtcDay());
   const todaysCommission = roundMoney(Number(commissionAgg._sum.rewardAmount ?? 0));
@@ -165,8 +166,6 @@ export async function getWorkbenchState(userId: string): Promise<WorkbenchState>
     // Fewer than this band's required eligible products exist — never
     // report a false completed (or any other) progress state.
     status = 'NOT_READY';
-  } else if (shortfall > 0) {
-    status = 'SHORTFALL';
   } else if (remaining.length === 0) {
     // This band's slots are all submitted. If the customer's effective
     // tier has already advanced (orders AND deposits both cleared this
@@ -197,7 +196,6 @@ export async function getWorkbenchState(userId: string): Promise<WorkbenchState>
     bandRequired: bandSize,
     depositsNeededForNextTier,
     workbenchBalance: roundMoney(demoBalance),
-    shortfall,
     todaysCommission,
     totalEarnings,
     subsidy,
@@ -222,12 +220,6 @@ export async function submitOrder(userId: string, productId: string): Promise<Su
   if (!ready) {
     throw AppError.conflict(
       `The workbench is not ready yet — ${bandSize} eligible ${tier}-tier products are required.`
-    );
-  }
-
-  if (Number(user.workbenchBalance) < 0) {
-    throw AppError.forbidden(
-      'Your demo working balance is negative. Resolve it with demo credits before continuing.'
     );
   }
 
@@ -258,9 +250,12 @@ export async function submitOrder(userId: string, productId: string): Promise<Su
     return { product, price, commission };
   });
 
-  const totalPrice = roundMoney(rows.reduce((sum, r) => sum + r.price, 0));
   const totalCommission = roundMoney(rows.reduce((sum, r) => sum + r.commission, 0));
-  const netAmount = roundMoney(totalCommission - totalPrice);
+  // A completed task credits only its commission to the demo workbench
+  // ledger — the product's full price is never deducted (there is no real
+  // cost of goods here, only a simulated commission-earning task), so this
+  // ledger can never go negative from legitimate order completion.
+  const netAmount = totalCommission;
   const wasFirstTask = user.completedOrders === 0;
   const newCompletedOrders = user.completedOrders + rows.length;
 
@@ -320,29 +315,6 @@ export async function submitOrder(userId: string, productId: string): Promise<Su
     }
     throw err;
   }
-}
-
-// The workbench's own shortfall-resolution action — a direct, instant,
-// simulation-only credit. Adds simulated credits to resolve the shortfall.
-// Never creates a Deposit, never touches User.balance/totalDeposits, never
-// involves crypto asset selection or admin approval. Completely separate from
-// deposit.service.ts.
-export async function resolveDemoShortfall(userId: string): Promise<SafeUser> {
-  const user = await findUserById(userId);
-  if (!user) throw AppError.unauthorized();
-
-  if (Number(user.workbenchBalance) >= 0) {
-    throw AppError.conflict('There is no demo balance shortfall to resolve.');
-  }
-
-  // Calculate the shortfall amount and add it as simulated credits
-  const shortfallAmount = roundMoney(-Number(user.workbenchBalance));
-  const updated = await updateUser(userId, {
-    workbenchBalance: { increment: shortfallAmount }, // This will bring it to 0
-    ...(user.isMerged ? { isMerged: false } : {}),
-  });
-
-  return toSafeUser(updated);
 }
 
 export async function listMySubmissions(userId: string) {

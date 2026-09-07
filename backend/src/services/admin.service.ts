@@ -103,9 +103,9 @@ export interface ResolveNegativeBalanceResult {
 // Resolves a negative real balance caused by the training Merged Product
 // event (see trainingTask.service.ts's applyMergedProductTrainingEvent) —
 // the only mechanism in the app that can put a real User.balance below
-// zero. Never touches the separate, pre-existing workbenchBalance
-// shortfall (that stays customer-self-service, unchanged — see
-// order.service.ts's resolveDemoShortfall).
+// zero. Unrelated to the workbench's own demo ledger (User.workbenchBalance,
+// see order.service.ts), which only ever credits commission and can no
+// longer go negative.
 export async function resolveTrainingNegativeBalance(
   userId: string,
   adminId: string

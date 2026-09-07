@@ -37,7 +37,7 @@ async function assertTrainingUnlocked(userId: string): Promise<void> {
   // applyMergedProductTrainingEvent below) locks the whole training area
   // until an admin resolves it (admin.service.ts's
   // resolveTrainingNegativeBalance), separate from and never affecting the
-  // pre-existing workbenchBalance shortfall mechanic.
+  // unrelated workbench commission ledger (User.workbenchBalance).
   const user = await findUserById(userId);
   if (user && Number(user.balance) < 0) {
     throw AppError.forbidden(
@@ -194,8 +194,8 @@ export interface SubmitTaskResult {
 
 // The one Merged Product educational task additionally triggers a real,
 // server-computed negative-balance event on the customer's own real
-// account — separate and independent from the pre-existing workbench
-// Merge/shortfall mechanic (User.workbenchBalance), which is never touched
+// account — separate and independent from the unrelated workbench
+// commission ledger (User.workbenchBalance), which is never touched
 // here. Commission is 6x the normal 1% workbench rate (per the approved
 // spec), computed from the customer's actual next 1-3 eligible workbench
 // products — real Product rows, never a hardcoded amount. This never

@@ -397,7 +397,7 @@ export interface MergeBundle {
   commission: number;
 }
 
-export type WorkbenchStatus = 'NOT_READY' | 'TIER_LOCKED' | 'SHORTFALL' | 'COMPLETED' | 'MERGE' | 'NORMAL';
+export type WorkbenchStatus = 'NOT_READY' | 'TIER_LOCKED' | 'COMPLETED' | 'MERGE' | 'NORMAL';
 
 export interface WorkbenchState {
   status: WorkbenchStatus;
@@ -419,7 +419,6 @@ export interface WorkbenchState {
   // (User.balance). See order.service.ts / schema.prisma for the full
   // real-vs-simulated separation.
   workbenchBalance: number;
-  shortfall: number;
   todaysCommission: number;
   totalEarnings: number;
   // Computed display-only figure (totalEarnings * 20%) — there is no
