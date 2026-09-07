@@ -246,6 +246,17 @@ export interface SubmitTrainingTaskResult {
   status: TrainingTaskSubmissionStatus;
 }
 
+export interface TrainingReferralStatus {
+  hasReferral: boolean;
+  referralId: string | null;
+  referrerName: string | null;
+  referrerTier: Tier | null;
+  tierEligible: boolean;
+  trainingFundingRequired: number | null;
+  trainingFundedAt: string | null;
+  fundingComplete: boolean;
+}
+
 export interface AdminTrainingTask {
   id: string;
   productName: string;

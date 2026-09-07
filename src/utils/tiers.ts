@@ -2,9 +2,9 @@ import type { Tier, TierInfo } from '@/types';
 
 export const TIERS: Record<Tier, TierInfo> = {
   Bronze: { name: 'Bronze', minOrders: 0, minDeposits: 0, color: 'text-amber-600' },
-  Silver: { name: 'Silver', minOrders: 50, minDeposits: 500, color: 'text-slate-300' },
-  Gold: { name: 'Gold', minOrders: 200, minDeposits: 2000, color: 'text-amber-400' },
-  Platinum: { name: 'Platinum', minOrders: 500, minDeposits: 5000, color: 'text-cyan-300' },
+  Silver: { name: 'Silver', minOrders: 50, minDeposits: 500, color: 'text-slate-500' },
+  Gold: { name: 'Gold', minOrders: 200, minDeposits: 2000, color: 'text-amber-600' },
+  Platinum: { name: 'Platinum', minOrders: 500, minDeposits: 5000, color: 'text-cyan-600' },
 };
 
 export const TIER_ORDER: Tier[] = ['Bronze', 'Silver', 'Gold', 'Platinum'];

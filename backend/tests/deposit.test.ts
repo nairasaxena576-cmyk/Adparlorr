@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { registerAndLogin, createAdminAndLogin, createFixtureCourse } from './helpers';
+import { registerAndLogin, createAdminAndLogin, createFixtureCourse, completeTrainingTasks } from './helpers';
 
 type Session = Awaited<ReturnType<typeof registerAndLogin>>;
 type AdminSession = Awaited<ReturnType<typeof createAdminAndLogin>>;

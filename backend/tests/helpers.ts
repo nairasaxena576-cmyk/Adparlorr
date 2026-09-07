@@ -222,15 +222,21 @@ export async function createFixtureProduct(
 
 /**
  * Completes the current authoritative training-completion workflow:
- * 1. Creates/publishes required training tasks (default: 2 tasks)
- * 2. Submits valid training-task submissions for each task
- * 3. Performs admin approval for each submission
- * 4. Allows the existing trainingTaskCompletion service to set User.trainingCompletedAt
+ * 1. Satisfies the training-access gate (referral verified against a Gold+
+ *    referrer, then admin-confirmed funding — see unlockTrainingForCustomer).
+ * 2. Creates/publishes required training tasks (default: 2 tasks).
+ * 3. Submits each task — customer training submissions are auto-approved
+ *    immediately (no separate admin approval step exists anymore).
+ * 4. Allows the existing trainingTaskCompletion service to set User.trainingCompletedAt.
  *
  * Does NOT call deprecated evaluateAndSetTrainingCompletion().
- * Reusable across tests that need training completion as a precondition.
+ * Reusable across tests that need training completion as a precondition
+ * (e.g. deposit/order tests) without caring about the training mechanics
+ * themselves.
  */
 export async function completeTrainingTasks(user: Session, taskCount = 2) {
+  await unlockTrainingForCustomer(user);
+
   // Create required training tasks
   const tasks = [];
   for (let i = 0; i < taskCount; i++) {
@@ -243,27 +249,15 @@ export async function completeTrainingTasks(user: Session, taskCount = 2) {
     tasks.push(task);
   }
 
-  // Get admin for approvals
-  const admin = await createAdminAndLogin();
-
-  // Submit and get approval for each task
+  // Submit each task — auto-approved immediately, no admin review step.
   for (const task of tasks) {
-    // Submit correct answer
     const submitRes = await user.agent
       .post(`/api/training/tasks/${task.id}/submit`)
       .set('X-CSRF-Token', user.csrfToken)
       .send({ answer: task.productName });
 
     expect(submitRes.status).toBe(201);
-    expect(submitRes.body.data.status).toBe('PENDING');
-
-    // Admin approves the submission
-    const approveRes = await admin.agent
-      .post(`/api/admin/training/submissions/${submitRes.body.data.submissionId}/approve`)
-      .set('X-CSRF-Token', admin.csrfToken);
-
-    expect(approveRes.status).toBe(200);
-    expect(approveRes.body.data.submission.status).toBe('APPROVED');
+    expect(submitRes.body.data.status).toBe('APPROVED');
   }
 }
 
@@ -278,4 +272,38 @@ export async function createFixtureWorkbenchSet(count: number, priceEach = 100) 
     products.push(await createFixtureProduct({ price: priceEach }));
   }
   return products;
+}
+
+/**
+ * Satisfies the training-access gate (referral verified against a Gold+
+ * referrer, then admin-confirmed funding — see referral.service.ts /
+ * trainingTask.service.ts's assertTrainingUnlocked) for an already-
+ * registered customer Session, so tests can reach the 45-task flow without
+ * re-deriving this setup at every call site. Creates its own dedicated
+ * referrer (Gold tier, funded balance) — never reuses one across calls.
+ */
+export async function unlockTrainingForCustomer(customer: Session) {
+  const referrer = await registerAndLogin();
+  await prisma.user.update({
+    where: { id: referrer.body.data.user.id },
+    data: { completedOrders: 200, totalDeposits: 2000, balance: 1500 },
+  });
+
+  const verifyRes = await customer.agent
+    .post('/api/referrals/training/verify')
+    .set('X-CSRF-Token', customer.csrfToken)
+    .send({ referralCode: referrer.body.data.user.referralCode });
+  if (verifyRes.status !== 200) {
+    throw new Error(`unlockTrainingForCustomer: referral verification failed (${verifyRes.status}): ${JSON.stringify(verifyRes.body)}`);
+  }
+
+  const admin = await createAdminAndLogin();
+  const confirmRes = await admin.agent
+    .post(`/api/admin/referrals/${verifyRes.body.data.referral.referralId}/confirm-funding`)
+    .set('X-CSRF-Token', admin.csrfToken);
+  if (confirmRes.status !== 200) {
+    throw new Error(`unlockTrainingForCustomer: funding confirmation failed (${confirmRes.status}): ${JSON.stringify(confirmRes.body)}`);
+  }
+
+  return { referrer, admin };
 }

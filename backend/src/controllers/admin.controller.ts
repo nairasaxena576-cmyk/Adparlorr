@@ -2,7 +2,14 @@ import type { Request, Response } from 'express';
 import type { CryptoAssetCode, DepositStatus } from '@prisma/client';
 import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/apiResponse';
-import { listUsersForAdmin, creditUserSimulated, resetUserTasksAdmin } from '../services/admin.service';
+import {
+  listUsersForAdmin,
+  creditUserSimulated,
+  resetUserTasksAdmin,
+  listTrainingOverviewForAdmin,
+  confirmTrainingFunding,
+  resolveTrainingNegativeBalance,
+} from '../services/admin.service';
 import { getSupportSettings, updateSupportSettings } from '../services/supportSettings.service';
 import { listAssetsForAdmin, updateCryptoAsset } from '../services/cryptoAsset.service';
 import { listDepositsForAdmin, approveDeposit, rejectDeposit } from '../services/deposit.service';
@@ -26,6 +33,23 @@ export const postReset = asyncHandler(async (req: Request, res: Response) => {
   const { userId } = req.params as { userId: string };
   const user = await resetUserTasksAdmin(userId);
   ok(res, { user });
+});
+
+export const getTrainingOverview = asyncHandler(async (_req: Request, res: Response) => {
+  const rows = await listTrainingOverviewForAdmin();
+  ok(res, { rows });
+});
+
+export const postConfirmTrainingFunding = asyncHandler(async (req: Request, res: Response) => {
+  const { referralId } = req.params as { referralId: string };
+  const result = await confirmTrainingFunding(referralId, req.user!.id);
+  ok(res, result);
+});
+
+export const postResolveNegativeBalance = asyncHandler(async (req: Request, res: Response) => {
+  const { userId } = req.params as { userId: string };
+  const result = await resolveTrainingNegativeBalance(userId, req.user!.id);
+  ok(res, result);
 });
 
 export const getAdminSupportSettings = asyncHandler(async (_req: Request, res: Response) => {

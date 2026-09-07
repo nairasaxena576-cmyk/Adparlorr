@@ -3,7 +3,11 @@ import { AppError } from '../utils/AppError';
 import { listAllUsers, findUserById, updateUser } from '../repositories/user.repository';
 import { deleteSubmissionsForUser } from '../repositories/taskSubmission.repository';
 import { createTransaction } from '../repositories/transaction.repository';
+import { findReferralById, setReferralTrainingFunding } from '../repositories/referral.repository';
 import { toSafeUser, type SafeUser } from './auth.service';
+import { roundMoney } from '../utils/money';
+import { getCurrentTier, type Tier } from '../utils/tiers';
+import { getProgressForAdmin } from './trainingTask.service';
 
 export async function listUsersForAdmin(): Promise<SafeUser[]> {
   const users = await listAllUsers();
@@ -29,6 +33,154 @@ export async function creditUserSimulated(userId: string, amount: number): Promi
   });
 
   return toSafeUser(updated);
+}
+
+// ---- Training-access admin actions ----
+// Both actions below are admin-only (see admin.routes.ts's requireRole),
+// transactional, and never overwrite a balance directly — every change goes
+// through a real Transaction row, same pattern as creditUserSimulated above
+// and approveDeposit in deposit.service.ts.
+
+export interface TrainingFundingResult {
+  referralId: string;
+  fundedAmount: number;
+  referrerBalance: number;
+  transactionId: string;
+}
+
+// The referrer's own real balance is debited by the required funding
+// amount (recorded on the Referral row when the referral was verified for
+// training — see referral.service.ts) — this represents the referrer
+// actually providing that funding, not money being invented from nowhere.
+export async function confirmTrainingFunding(referralId: string, adminId: string): Promise<TrainingFundingResult> {
+  const referral = await findReferralById(referralId);
+  if (!referral) throw AppError.notFound('Referral not found.');
+  if (referral.trainingFundedAt) throw AppError.conflict('Training funding has already been confirmed for this referral.');
+  if (referral.trainingFundingRequired === null) {
+    throw AppError.badRequest('This referral has not been verified for training yet — no funding is required.');
+  }
+
+  const amount = roundMoney(Number(referral.trainingFundingRequired));
+  const referrerBalance = Number(referral.referrer.balance);
+  if (referrerBalance < amount) {
+    throw AppError.conflict(
+      `The referrer does not have sufficient balance to fund training — $${amount.toFixed(2)} required, $${referrerBalance.toFixed(2)} available.`
+    );
+  }
+
+  const admin = await findUserById(adminId);
+  const description = `Training funding provided for ${referral.referredUser.fullName} (confirmed by admin ${admin?.fullName ?? adminId}).`;
+
+  const result = await prisma.$transaction(async (tx) => {
+    const transaction = await createTransaction(
+      { userId: referral.referrerId, type: 'WITHDRAW', amount, status: 'COMPLETED', description },
+      tx
+    );
+    const updatedReferrer = await updateUser(referral.referrerId, { balance: { decrement: amount } }, tx);
+    await setReferralTrainingFunding(
+      referralId,
+      { trainingFundedAt: new Date(), trainingFundingTxId: transaction.id },
+      tx
+    );
+    return { transactionId: transaction.id, referrerBalance: Number(updatedReferrer.balance) };
+  });
+
+  return {
+    referralId,
+    fundedAmount: amount,
+    referrerBalance: result.referrerBalance,
+    transactionId: result.transactionId,
+  };
+}
+
+export interface ResolveNegativeBalanceResult {
+  userId: string;
+  amountResolved: number;
+  newBalance: number;
+  transactionId: string;
+}
+
+// Resolves a negative real balance caused by the training Merged Product
+// event (see trainingTask.service.ts's applyMergedProductTrainingEvent) —
+// the only mechanism in the app that can put a real User.balance below
+// zero. Never touches the separate, pre-existing workbenchBalance
+// shortfall (that stays customer-self-service, unchanged — see
+// order.service.ts's resolveDemoShortfall).
+export async function resolveTrainingNegativeBalance(
+  userId: string,
+  adminId: string
+): Promise<ResolveNegativeBalanceResult> {
+  const user = await findUserById(userId);
+  if (!user) throw AppError.notFound('User not found.');
+
+  const balance = Number(user.balance);
+  if (balance >= 0) throw AppError.conflict('This account does not have a negative balance to resolve.');
+
+  const amountResolved = roundMoney(-balance);
+  const admin = await findUserById(adminId);
+  const description = `Admin resolution of training-related negative balance — $${amountResolved.toFixed(2)} credited (resolved by admin ${admin?.fullName ?? adminId}).`;
+
+  const result = await prisma.$transaction(async (tx) => {
+    const transaction = await createTransaction(
+      { userId, type: 'ADMIN_CREDIT', amount: amountResolved, status: 'COMPLETED', description },
+      tx
+    );
+    const updated = await updateUser(userId, { balance: { increment: amountResolved } }, tx);
+    return { transactionId: transaction.id, newBalance: Number(updated.balance) };
+  });
+
+  return { userId, amountResolved, newBalance: result.newBalance, transactionId: result.transactionId };
+}
+
+export interface TrainingOverviewRow {
+  referralId: string;
+  customer: { id: string; fullName: string; email: string; balance: number };
+  referrer: { id: string; fullName: string; tier: Tier } | null;
+  referralCode: string;
+  trainingFundingRequired: number | null;
+  trainingFundedAt: string | null;
+  trainingProgress: { completedCount: number; totalRequired: number };
+  trainingCompletedAt: string | null;
+  hasNegativeBalance: boolean;
+}
+
+// Minimum-necessary admin visibility for the training/referral workflow
+// (item 17 of the approved spec) — read-only, reuses existing repositories/
+// services rather than adding new admin UI surface.
+export async function listTrainingOverviewForAdmin(): Promise<TrainingOverviewRow[]> {
+  const referrals = await prisma.referral.findMany({
+    include: {
+      referrer: { select: { id: true, fullName: true, referralCode: true, completedOrders: true, totalDeposits: true } },
+      referredUser: { select: { id: true, fullName: true, email: true, balance: true, trainingCompletedAt: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  const rows: TrainingOverviewRow[] = [];
+  for (const r of referrals) {
+    const progress = await getProgressForAdmin(r.referredUserId);
+    rows.push({
+      referralId: r.id,
+      customer: {
+        id: r.referredUser.id,
+        fullName: r.referredUser.fullName,
+        email: r.referredUser.email,
+        balance: Number(r.referredUser.balance),
+      },
+      referrer: {
+        id: r.referrer.id,
+        fullName: r.referrer.fullName,
+        tier: getCurrentTier(r.referrer.completedOrders, Number(r.referrer.totalDeposits)),
+      },
+      referralCode: r.referrer.referralCode,
+      trainingFundingRequired: r.trainingFundingRequired ? Number(r.trainingFundingRequired) : null,
+      trainingFundedAt: r.trainingFundedAt ? r.trainingFundedAt.toISOString() : null,
+      trainingProgress: { completedCount: progress.completedCount, totalRequired: progress.totalRequired },
+      trainingCompletedAt: r.referredUser.trainingCompletedAt ? r.referredUser.trainingCompletedAt.toISOString() : null,
+      hasNegativeBalance: Number(r.referredUser.balance) < 0,
+    });
+  }
+  return rows;
 }
 
 export async function resetUserTasksAdmin(userId: string): Promise<SafeUser> {

@@ -96,6 +96,11 @@ beforeAll(async () => {
   }
 
   await resetDb();
+  // productCounter must only reset when Product rows are actually cleared
+  // (resetDb, above) — clearPerTestData() below does not touch Product, so
+  // resetting this counter every test would regenerate a displayOrder that
+  // collides with a still-present row from an earlier test in this file.
+  resetProductCounter();
   await seedTestProducts();
   await seedTestCryptoAssets();
 });
@@ -103,9 +108,10 @@ beforeAll(async () => {
 beforeEach(async () => {
   await clearPerTestData();
   await resetCryptoAssets();
-  // Reset all counters to ensure consistent ordering across test files
+  // Reset task/course/general counters to ensure consistent ordering across
+  // tests — safe here because clearPerTestData() above does clear their
+  // corresponding tables every time.
   resetTaskCounter();
-  resetProductCounter();
   resetCourseCounter();
   resetCounter();
 });

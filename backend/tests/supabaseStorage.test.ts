@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 
 // Pure unit tests for the storage module itself — no database, no network,
 // no real Supabase project involved. @supabase/supabase-js is mocked
@@ -21,7 +21,23 @@ vi.mock('../src/config/env', () => ({
   },
 }));
 
-import { uploadTrainingTaskImage, deleteTrainingTaskImage } from '../src/lib/supabaseStorage';
+// tests/setup.ts (a global setupFile applied to every test file) imports
+// ./helpers, whose eager `export const app = createApp()` transitively
+// loads the REAL supabaseStorage.ts/@supabase/supabase-js/config/env before
+// this file's own vi.mock() calls above can intercept them — setupFiles
+// run before, and share the module registry with, the test file itself.
+// vi.resetModules() + a dynamic import performed here (strictly after this
+// file's own vi.mock() calls have registered) forces a fresh resolution
+// that correctly binds to the mocks. Same pattern as productAdmin.test.ts.
+let uploadTrainingTaskImage: typeof import('../src/lib/supabaseStorage').uploadTrainingTaskImage;
+let deleteTrainingTaskImage: typeof import('../src/lib/supabaseStorage').deleteTrainingTaskImage;
+
+beforeAll(async () => {
+  vi.resetModules();
+  const mod = await import('../src/lib/supabaseStorage');
+  uploadTrainingTaskImage = mod.uploadTrainingTaskImage;
+  deleteTrainingTaskImage = mod.deleteTrainingTaskImage;
+});
 
 describe('supabaseStorage (configured)', () => {
   beforeEach(() => {

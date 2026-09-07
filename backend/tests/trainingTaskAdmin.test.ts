@@ -1,12 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { prisma } from '../src/lib/prisma';
 
 // Never touch the real Supabase Storage bucket from tests — stub the
-// storage module entirely. vi.mock calls are hoisted above these imports by
-// vitest's transform, so mockUpload/mockDelete below will resolve to the
-// mocked functions. This also means these tests exercise the full real
-// request pipeline (auth, CSRF, role check, multer validation) while only
-// the actual cloud call is faked.
+// storage module entirely.
 const FAKE_STORAGE_BASE = 'https://fake-project.supabase.test/storage/v1/object/public/training-task-images';
 let fakeUploadCounter = 0;
 
@@ -20,8 +16,32 @@ vi.mock('../src/lib/supabaseStorage', () => ({
   deleteTrainingTaskImage: vi.fn(async () => undefined),
 }));
 
-import { registerAndLogin, createAdminAndLogin, createFixtureTask } from './helpers';
-import { uploadTrainingTaskImage as mockUpload, deleteTrainingTaskImage as mockDelete } from '../src/lib/supabaseStorage';
+// tests/setup.ts (a global setupFile applied to every test file) imports
+// ./helpers, whose eager `export const app = createApp()` transitively
+// loads the REAL supabaseStorage.ts before this file's own vi.mock() call
+// above can intercept it — setupFiles run before, and share the module
+// registry with, the test file itself. vi.resetModules() + a dynamic
+// import performed here (strictly after this file's own vi.mock() call has
+// registered) forces a fresh resolution that correctly binds to the mocks.
+// Same pattern as productAdmin.test.ts / supabaseStorage.test.ts.
+let registerAndLogin: typeof import('./helpers').registerAndLogin;
+let createAdminAndLogin: typeof import('./helpers').createAdminAndLogin;
+let createFixtureTask: typeof import('./helpers').createFixtureTask;
+let unlockTrainingForCustomer: typeof import('./helpers').unlockTrainingForCustomer;
+let mockUpload: typeof import('../src/lib/supabaseStorage').uploadTrainingTaskImage;
+let mockDelete: typeof import('../src/lib/supabaseStorage').deleteTrainingTaskImage;
+
+beforeAll(async () => {
+  vi.resetModules();
+  const helpers = await import('./helpers');
+  registerAndLogin = helpers.registerAndLogin;
+  createAdminAndLogin = helpers.createAdminAndLogin;
+  createFixtureTask = helpers.createFixtureTask;
+  unlockTrainingForCustomer = helpers.unlockTrainingForCustomer;
+  const storage = await import('../src/lib/supabaseStorage');
+  mockUpload = storage.uploadTrainingTaskImage;
+  mockDelete = storage.deleteTrainingTaskImage;
+});
 
 describe('training tasks (admin)', () => {
   beforeEach(() => {
@@ -128,6 +148,7 @@ describe('training tasks (admin)', () => {
     const task = await createFixtureTask({ productName: 'Old Name' });
     const admin = await createAdminAndLogin();
     const user = await registerAndLogin();
+    await unlockTrainingForCustomer(user);
 
     const submitRes = await user.agent
       .post(`/api/training/tasks/${task.id}/submit`)
@@ -215,6 +236,7 @@ describe('training tasks (admin)', () => {
     const task = await createFixtureTask({ productName: 'Nike Air Max 90' });
     const admin = await createAdminAndLogin();
     const user = await registerAndLogin();
+    await unlockTrainingForCustomer(user);
 
     const submitRes = await user.agent
       .post(`/api/training/tasks/${task.id}/submit`)
@@ -263,6 +285,7 @@ describe('training tasks (admin)', () => {
     const task = await createFixtureTask({ productName: 'Samsung Galaxy S25' });
     const admin = await createAdminAndLogin();
     const user = await registerAndLogin();
+    await unlockTrainingForCustomer(user);
 
     const submitRes = await user.agent
       .post(`/api/training/tasks/${task.id}/submit`)
@@ -270,9 +293,9 @@ describe('training tasks (admin)', () => {
       .send({ answer: 'Samsung Galaxy S25' });
     const submissionId = submitRes.body.data.submissionId;
 
-    await admin.agent
-      .post(`/api/admin/training/submissions/${submissionId}/approve`)
-      .set('X-CSRF-Token', admin.csrfToken);
+    // Customer training submissions are auto-approved immediately (item 7
+    // of the approved spec) — no separate admin approve step exists or is
+    // needed here.
 
     await admin.agent.delete(`/api/admin/training/tasks/${task.id}`).set('X-CSRF-Token', admin.csrfToken);
 
@@ -302,6 +325,7 @@ describe('training tasks (admin)', () => {
     const task = await createFixtureTask({ productName: 'Nike Air Max 90' });
     const admin = await createAdminAndLogin();
     const user = await registerAndLogin();
+    await unlockTrainingForCustomer(user);
 
     const submitRes = await user.agent
       .post(`/api/training/tasks/${task.id}/submit`)
@@ -314,29 +338,30 @@ describe('training tasks (admin)', () => {
       submittedAnswer: 'Nike Air Max 90',
       productNameSnapshot: 'Nike Air Max 90',
       isAutoMatch: true,
-      status: 'PENDING',
+      // Customer training submissions are auto-approved immediately (item 7
+      // of the approved spec) — never left PENDING for admin review.
+      status: 'APPROVED',
     });
     expect(res.body.data.submission.user.id).toBe(user.body.data.user.id);
   });
 
-  it('approves a submission and completes training once every required task is approved', async () => {
+  it('auto-approves each submission and completes training once every required task is submitted', async () => {
     const task1 = await createFixtureTask({ order: 1, productName: 'A' });
     const task2 = await createFixtureTask({ order: 2, productName: 'B' });
-    const admin = await createAdminAndLogin();
     const user = await registerAndLogin();
+    await unlockTrainingForCustomer(user);
 
     const submit1 = await user.agent
       .post(`/api/training/tasks/${task1.id}/submit`)
       .set('X-CSRF-Token', user.csrfToken)
       .send({ answer: 'A' });
-    const approve1 = await admin.agent
-      .post(`/api/admin/training/submissions/${submit1.body.data.submissionId}/approve`)
-      .set('X-CSRF-Token', admin.csrfToken);
-    expect(approve1.status).toBe(200);
-    expect(approve1.body.data.submission.status).toBe('APPROVED');
-    expect(approve1.body.data.user.trainingCompletedAt).toBeNull();
+    expect(submit1.status).toBe(201);
+    expect(submit1.body.data.status).toBe('APPROVED');
 
-    // task2's "current" endpoint only unlocks after task1 is approved.
+    const meAfterFirst = await user.agent.get('/api/auth/me');
+    expect(meAfterFirst.body.data.user.trainingCompletedAt).toBeNull();
+
+    // task2's "current" endpoint only unlocks once task1 is complete.
     const detail2 = await user.agent.get(`/api/training/tasks/${task2.id}`);
     expect(detail2.status).toBe(200);
 
@@ -344,34 +369,46 @@ describe('training tasks (admin)', () => {
       .post(`/api/training/tasks/${task2.id}/submit`)
       .set('X-CSRF-Token', user.csrfToken)
       .send({ answer: 'B' });
-    const approve2 = await admin.agent
-      .post(`/api/admin/training/submissions/${submit2.body.data.submissionId}/approve`)
-      .set('X-CSRF-Token', admin.csrfToken);
-
-    expect(approve2.body.data.user.trainingCompletedAt).not.toBeNull();
+    expect(submit2.status).toBe(201);
 
     const me = await user.agent.get('/api/auth/me');
     expect(me.body.data.user.trainingCompletedAt).not.toBeNull();
   });
 
+  // Customer training submissions are now always auto-approved (item 7) —
+  // there is no longer a natural way to reach a PENDING submission via the
+  // real customer endpoint. The next two tests seed one directly to prove
+  // the legacy admin reject/approve endpoints (kept for compatibility, per
+  // item 7/17 of the approved spec) still function correctly on whatever
+  // submission they're pointed at.
+  async function seedPendingSubmission(task: { id: string; productName: string; imageUrl: string }, userId: string) {
+    return prisma.trainingTaskSubmission.create({
+      data: {
+        userId,
+        taskId: task.id,
+        submittedAnswer: 'wrong',
+        isAutoMatch: false,
+        productNameSnapshot: task.productName,
+        imageUrlSnapshot: task.imageUrl,
+        status: 'PENDING',
+      },
+    });
+  }
+
   it('rejects a submission and requires a reason', async () => {
     const task = await createFixtureTask();
     const admin = await createAdminAndLogin();
     const user = await registerAndLogin();
-
-    const submitRes = await user.agent
-      .post(`/api/training/tasks/${task.id}/submit`)
-      .set('X-CSRF-Token', user.csrfToken)
-      .send({ answer: 'wrong' });
+    const submission = await seedPendingSubmission(task, user.body.data.user.id);
 
     const withoutReason = await admin.agent
-      .post(`/api/admin/training/submissions/${submitRes.body.data.submissionId}/reject`)
+      .post(`/api/admin/training/submissions/${submission.id}/reject`)
       .set('X-CSRF-Token', admin.csrfToken)
       .send({});
     expect(withoutReason.status).toBe(400);
 
     const withReason = await admin.agent
-      .post(`/api/admin/training/submissions/${submitRes.body.data.submissionId}/reject`)
+      .post(`/api/admin/training/submissions/${submission.id}/reject`)
       .set('X-CSRF-Token', admin.csrfToken)
       .send({ rejectionReason: 'Not the correct product name.' });
     expect(withReason.status).toBe(200);
@@ -383,17 +420,14 @@ describe('training tasks (admin)', () => {
     const task = await createFixtureTask();
     const admin = await createAdminAndLogin();
     const user = await registerAndLogin();
+    const submission = await seedPendingSubmission(task, user.body.data.user.id);
 
-    const submitRes = await user.agent
-      .post(`/api/training/tasks/${task.id}/submit`)
-      .set('X-CSRF-Token', user.csrfToken)
-      .send({ answer: 'x' });
-
-    await admin.agent
-      .post(`/api/admin/training/submissions/${submitRes.body.data.submissionId}/approve`)
+    const first = await admin.agent
+      .post(`/api/admin/training/submissions/${submission.id}/approve`)
       .set('X-CSRF-Token', admin.csrfToken);
+    expect(first.status).toBe(200);
     const second = await admin.agent
-      .post(`/api/admin/training/submissions/${submitRes.body.data.submissionId}/approve`)
+      .post(`/api/admin/training/submissions/${submission.id}/approve`)
       .set('X-CSRF-Token', admin.csrfToken);
     expect(second.status).toBe(409);
   });
@@ -402,20 +436,22 @@ describe('training tasks (admin)', () => {
     const task = await createFixtureTask();
     const admin = await createAdminAndLogin();
     const user = await registerAndLogin();
+    await unlockTrainingForCustomer(user);
 
+    // A real customer submission is auto-approved immediately.
     await user.agent
       .post(`/api/training/tasks/${task.id}/submit`)
       .set('X-CSRF-Token', user.csrfToken)
       .send({ answer: 'x' });
 
     const pending = await admin.agent.get('/api/admin/training/submissions?status=PENDING');
-    expect(pending.body.data.submissions).toHaveLength(1);
+    expect(pending.body.data.submissions).toHaveLength(0);
 
     const approved = await admin.agent.get('/api/admin/training/submissions?status=APPROVED');
-    expect(approved.body.data.submissions).toHaveLength(0);
+    expect(approved.body.data.submissions).toHaveLength(1);
   });
 
-  it('gates deposits on task-based training completion, unlocking only after admin approval', async () => {
+  it('gates deposits on task-based training completion, unlocking immediately once the (auto-approved) task is submitted', async () => {
     const task = await createFixtureTask({ productName: 'Nike Air Max 90' });
     const admin = await createAdminAndLogin();
     await admin.agent
@@ -424,6 +460,7 @@ describe('training tasks (admin)', () => {
       .send({ address: 'TAddressExample123', isEnabled: true });
 
     const user = await registerAndLogin();
+    await unlockTrainingForCustomer(user);
 
     const blocked = await user.agent
       .post('/api/wallet/deposit')
@@ -435,18 +472,11 @@ describe('training tasks (admin)', () => {
       .post(`/api/training/tasks/${task.id}/submit`)
       .set('X-CSRF-Token', user.csrfToken)
       .send({ answer: 'Nike Air Max 90' });
+    expect(submitRes.status).toBe(201);
+    expect(submitRes.body.data.status).toBe('APPROVED');
 
-    // Still blocked while the correct-but-unreviewed submission is pending.
-    const stillBlocked = await user.agent
-      .post('/api/wallet/deposit')
-      .set('X-CSRF-Token', user.csrfToken)
-      .send({ assetCode: 'USDT', amount: 50 });
-    expect(stillBlocked.status).toBe(403);
-
-    await admin.agent
-      .post(`/api/admin/training/submissions/${submitRes.body.data.submissionId}/approve`)
-      .set('X-CSRF-Token', admin.csrfToken);
-
+    // The one required task is auto-approved immediately on submit — no
+    // separate admin approval step is needed for the deposit gate to open.
     const unlocked = await user.agent
       .post('/api/wallet/deposit')
       .set('X-CSRF-Token', user.csrfToken)

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { registerAndLogin, createAdminAndLogin, createFixtureCourse, createFixtureTask } from './helpers';
+import { registerAndLogin, createAdminAndLogin, createFixtureCourse, createFixtureTask, unlockTrainingForCustomer } from './helpers';
 
 function uniqueSlug() {
   return `course-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -257,43 +257,32 @@ describe('training management (admin)', () => {
     // Establish training completion via the current Training Task system
     const admin = await createAdminAndLogin();
     const user = await registerAndLogin();
+    await unlockTrainingForCustomer(user);
 
     // Create two required training tasks
     const task1 = await createFixtureTask({ order: 1, productName: 'Fixture Product 1' });
     const task2 = await createFixtureTask({ order: 2, productName: 'Fixture Product 2' });
 
-    // Submit and approve first task
+    // Submit first task — auto-approved immediately, no admin review step.
     const submit1 = await user.agent
       .post(`/api/training/tasks/${task1.id}/submit`)
       .set('X-CSRF-Token', user.csrfToken)
       .send({ answer: task1.productName });
 
     expect(submit1.status).toBe(201);
-    expect(submit1.body.data.submissionId).toBeDefined();
+    expect(submit1.body.data.status).toBe('APPROVED');
 
-    const approve1 = await admin.agent
-      .post(`/api/admin/training/submissions/${submit1.body.data.submissionId}/approve`)
-      .set('X-CSRF-Token', admin.csrfToken);
-
-    expect(approve1.status).toBe(200);
-    expect(approve1.body.data.submission.status).toBe('APPROVED');
-
-    // Submit and approve second task (which completes training)
+    // Submit second task (which completes training).
     const submit2 = await user.agent
       .post(`/api/training/tasks/${task2.id}/submit`)
       .set('X-CSRF-Token', user.csrfToken)
       .send({ answer: task2.productName });
 
     expect(submit2.status).toBe(201);
-    expect(submit2.body.data.submissionId).toBeDefined();
+    expect(submit2.body.data.status).toBe('APPROVED');
 
-    const approve2 = await admin.agent
-      .post(`/api/admin/training/submissions/${submit2.body.data.submissionId}/approve`)
-      .set('X-CSRF-Token', admin.csrfToken);
-
-    expect(approve2.status).toBe(200);
-    expect(approve2.body.data.submission.status).toBe('APPROVED');
-    expect(approve2.body.data.user.trainingCompletedAt).not.toBeNull();
+    const meAfterCompletion = await user.agent.get('/api/auth/me');
+    expect(meAfterCompletion.body.data.user.trainingCompletedAt).not.toBeNull();
 
     // Enable USDT for deposit testing (required for deposit endpoint to work)
     await admin.agent

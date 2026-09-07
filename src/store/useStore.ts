@@ -21,6 +21,7 @@ import type {
   CustomerTrainingTask,
   TrainingTaskProgress,
   SubmitTrainingTaskResult,
+  TrainingReferralStatus,
   AdminTrainingTask,
   AdminTrainingTaskSubmission,
   TrainingTaskSubmissionStatus,
@@ -68,6 +69,7 @@ interface AppState {
 
   trainingTasks: CustomerTrainingTask[];
   trainingTaskProgress: TrainingTaskProgress | null;
+  trainingReferralStatus: TrainingReferralStatus | null;
   adminTrainingTasks: AdminTrainingTask[];
   adminTrainingSubmissions: AdminTrainingTaskSubmission[];
 
@@ -157,12 +159,16 @@ interface AppState {
   resetTrainingProgress: (courseId: string, userId?: string) => Promise<ActionResult>;
 
   // ---- Training tasks (product-image identification, customer) ----
-  fetchTrainingTasks: () => Promise<void>;
-  fetchTrainingTaskProgress: () => Promise<void>;
+  fetchTrainingTasks: () => Promise<ActionResult>;
+  fetchTrainingTaskProgress: () => Promise<ActionResult>;
   submitTrainingTask: (
     taskId: string,
     answer: string
   ) => Promise<{ ok: boolean; error?: string; result?: SubmitTrainingTaskResult }>;
+
+  // ---- Training access gate (referral + funding) ----
+  fetchTrainingReferralStatus: () => Promise<void>;
+  verifyTrainingReferral: (referralCode: string) => Promise<{ ok: boolean; error?: string }>;
 
   // ---- Training tasks (admin) ----
   fetchAdminTrainingTasks: () => Promise<void>;
@@ -211,6 +217,7 @@ export const useStore = create<AppState>()((set, get) => ({
 
   trainingTasks: [],
   trainingTaskProgress: null,
+  trainingReferralStatus: null,
   adminTrainingTasks: [],
   adminTrainingSubmissions: [],
 
@@ -686,13 +693,44 @@ export const useStore = create<AppState>()((set, get) => ({
   // ---- Training tasks (customer) ----
 
   fetchTrainingTasks: async () => {
-    const { data } = await api.get<{ tasks: CustomerTrainingTask[] }>('/api/training/tasks');
-    set({ trainingTasks: data.tasks });
+    try {
+      const { data } = await api.get<{ tasks: CustomerTrainingTask[] }>('/api/training/tasks');
+      set({ trainingTasks: data.tasks });
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err, 'Failed to load training tasks.') };
+    }
   },
 
   fetchTrainingTaskProgress: async () => {
-    const { data } = await api.get<TrainingTaskProgress>('/api/training/progress');
-    set({ trainingTaskProgress: data });
+    try {
+      const { data } = await api.get<TrainingTaskProgress>('/api/training/progress');
+      set({ trainingTaskProgress: data });
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err, 'Failed to load training progress.') };
+    }
+  },
+
+  fetchTrainingReferralStatus: async () => {
+    try {
+      const { data } = await api.get<{ referral: TrainingReferralStatus }>('/api/referrals/training');
+      set({ trainingReferralStatus: data.referral });
+    } catch {
+      set({ trainingReferralStatus: null });
+    }
+  },
+
+  verifyTrainingReferral: async (referralCode) => {
+    try {
+      const { data } = await api.post<{ referral: TrainingReferralStatus }>('/api/referrals/training/verify', {
+        referralCode,
+      });
+      set({ trainingReferralStatus: data.referral });
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err, 'Failed to verify referral code.') };
+    }
   },
 
   submitTrainingTask: async (taskId, answer) => {

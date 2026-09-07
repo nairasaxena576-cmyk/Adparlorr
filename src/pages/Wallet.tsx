@@ -90,19 +90,19 @@ export function WalletPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-extrabold text-white">Wallet</h1>
-        <p className="mt-1 text-sm text-ink-400">Manage your balance, deposits, and withdrawals.</p>
+        <h1 className="text-2xl font-extrabold text-ink-900">Wallet</h1>
+        <p className="mt-1 text-sm text-ink-500">Manage your balance, deposits, and withdrawals.</p>
       </div>
 
       {/* Balance card */}
-      <div className="card">
+      <div className="card-c">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-ink-400">Available Balance</p>
-            <p className="mt-1 text-4xl font-extrabold text-white">${user.balance.toFixed(2)}</p>
+            <p className="text-sm text-ink-500">Available Balance</p>
+            <p className="mt-1 text-4xl font-extrabold text-ink-900">${user.balance.toFixed(2)}</p>
           </div>
           <div className="grid h-16 w-16 place-items-center rounded-2xl bg-brand-500/15">
-            <Wallet className="h-8 w-8 text-brand-400" />
+            <Wallet className="h-8 w-8 text-brand-500" />
           </div>
         </div>
         <div className="mt-5 flex gap-3">
@@ -111,11 +111,11 @@ export function WalletPage() {
               <ArrowDownToLine className="h-4 w-4" /> Deposit
             </button>
           ) : (
-            <button disabled className="btn-ghost flex-1 cursor-not-allowed opacity-60">
+            <button disabled className="btn-ghost-c flex-1 cursor-not-allowed opacity-60">
               <Lock className="h-4 w-4" /> Deposit
             </button>
           )}
-          <button onClick={handleWithdrawClick} disabled={withdrawing} className="btn-ghost flex-1 disabled:opacity-60">
+          <button onClick={handleWithdrawClick} disabled={withdrawing} className="btn-ghost-c flex-1 disabled:opacity-60">
             <ArrowUpFromLine className="h-4 w-4" /> {withdrawing ? 'Checking…' : 'Withdraw'}
           </button>
         </div>
@@ -123,13 +123,13 @@ export function WalletPage() {
 
       {/* Training-gate notice */}
       {!trainingCompleted && (
-        <div className="card border-amber-500/40 bg-amber-500/10">
+        <div className="card-c border-amber-300 bg-amber-50">
           <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
             <div className="flex items-start gap-3">
-              <Lock className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
+              <Lock className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
               <div>
-                <p className="font-bold text-amber-300">🔒 Deposits</p>
-                <p className="mt-1 text-sm text-amber-200/80">
+                <p className="font-bold text-amber-700">🔒 Deposits</p>
+                <p className="mt-1 text-sm text-amber-700/80">
                   Complete your required training before making a deposit.
                 </p>
               </div>
@@ -142,30 +142,30 @@ export function WalletPage() {
       )}
 
       {/* Transaction history */}
-      <div className="card">
-        <h3 className="text-lg font-bold text-white">Transaction History</h3>
+      <div className="card-c">
+        <h3 className="text-lg font-bold text-ink-900">Transaction History</h3>
         <div className="mt-4 space-y-2">
           {transactions.length === 0 ? (
-            <p className="py-6 text-center text-sm text-ink-400">No transactions yet.</p>
+            <p className="py-6 text-center text-sm text-ink-500">No transactions yet.</p>
           ) : (
             transactions.map((t) => (
-              <div key={t.id} className="flex items-center justify-between rounded-lg bg-ink-800/60 px-4 py-3">
+              <div key={t.id} className="flex items-center justify-between rounded-lg bg-pink-50 px-4 py-3">
                 <div className="flex items-center gap-3">
                   <div className={`grid h-9 w-9 place-items-center rounded-lg ${
                     t.type === 'DEPOSIT' ? 'bg-brand-500/15' : 'bg-sky-500/15'
                   }`}>
-                    {t.type === 'DEPOSIT' ? <ArrowDownToLine className="h-4 w-4 text-brand-400" /> : <DollarSign className="h-4 w-4 text-sky-400" />}
+                    {t.type === 'DEPOSIT' ? <ArrowDownToLine className="h-4 w-4 text-brand-500" /> : <DollarSign className="h-4 w-4 text-sky-500" />}
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-white">{t.description}</p>
-                    <p className="text-xs text-ink-400">{t.type.replace('_', ' ').toLowerCase()}</p>
+                    <p className="text-sm font-semibold text-ink-900">{t.description}</p>
+                    <p className="text-xs text-ink-500">{t.type.replace('_', ' ').toLowerCase()}</p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className={`text-sm font-bold ${t.amount > 0 ? 'text-brand-400' : 'text-red-400'}`}>
+                  <p className={`text-sm font-bold ${t.amount > 0 ? 'text-brand-600' : 'text-red-600'}`}>
                     {t.amount > 0 ? '+' : ''}${t.amount.toFixed(2)}
                   </p>
-                  <span className={`text-xs ${t.status === 'COMPLETED' ? 'text-brand-400' : t.status === 'FAILED' ? 'text-red-400' : 'text-amber-400'}`}>
+                  <span className={`text-xs ${t.status === 'COMPLETED' ? 'text-brand-600' : t.status === 'FAILED' ? 'text-red-600' : 'text-amber-600'}`}>
                     {t.status.toLowerCase()}
                   </span>
                 </div>

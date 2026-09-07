@@ -156,6 +156,17 @@ model Referral {
   referredUser   User           @relation("ReferralReceived", fields: [referredUserId], references: [id], onDelete: Cascade)
   referrer       User           @relation("ReferralsMade", fields: [referrerId], references: [id], onDelete: Cascade)
 
+  // Training-funding gate (see trainingTask.service.ts's training-access
+  // check): the referrer must provide this amount, confirmed by an admin,
+  // before the referred user's training unlocks. Nullable/unset for every
+  // referral row created before this feature and for referrals never used
+  // to unlock training. trainingFundingTxId points at the real Transaction
+  // (on the referrer's own account) recording that funding — see
+  // admin.service.ts's confirmTrainingFunding.
+  trainingFundingRequired Decimal?  @db.Decimal(12, 2)
+  trainingFundedAt        DateTime?
+  trainingFundingTxId     String?
+
   @@index([referrerId])
 }
 

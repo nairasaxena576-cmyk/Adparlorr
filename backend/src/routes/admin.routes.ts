@@ -10,6 +10,9 @@ import {
   getAdminDeposits,
   postApproveDeposit,
   postRejectDeposit,
+  getTrainingOverview,
+  postConfirmTrainingFunding,
+  postResolveNegativeBalance,
 } from '../controllers/admin.controller';
 import { requireAuth } from '../middleware/requireAuth';
 import { requireRole } from '../middleware/requireRole';
@@ -19,6 +22,8 @@ import {
   creditUserBodySchema,
   creditUserParamsSchema,
   resetUserParamsSchema,
+  referralIdParamsSchema,
+  resolveNegativeBalanceParamsSchema,
 } from '../schemas/admin.schema';
 import { updateSupportSettingsSchema } from '../schemas/supportSettings.schema';
 import { cryptoAssetCodeParamsSchema, updateCryptoAssetBodySchema } from '../schemas/cryptoAsset.schema';
@@ -56,6 +61,22 @@ adminRouter.put(
   verifyCsrf,
   validate({ params: cryptoAssetCodeParamsSchema, body: updateCryptoAssetBodySchema }),
   putAdminCryptoAsset
+);
+
+// Training/referral workflow — minimum-necessary admin visibility + the two
+// admin-only financial actions the new workflow needs (item 17).
+adminRouter.get('/training-overview', getTrainingOverview);
+adminRouter.post(
+  '/referrals/:referralId/confirm-funding',
+  verifyCsrf,
+  validate({ params: referralIdParamsSchema }),
+  postConfirmTrainingFunding
+);
+adminRouter.post(
+  '/users/:userId/resolve-negative-balance',
+  verifyCsrf,
+  validate({ params: resolveNegativeBalanceParamsSchema }),
+  postResolveNegativeBalance
 );
 
 adminRouter.get('/deposits', validate({ query: listDepositsQuerySchema }), getAdminDeposits);

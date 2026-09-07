@@ -33,6 +33,20 @@
   .card {
     @apply rounded-xl border border-ink-700 bg-ink-800/60 p-5;
   }
+  /* Light "premium" card used only on the customer-facing dashboard pages
+     (Home/Orders/Wallet/Records/Training/Referral/Support) — sits on top of
+     the pastel CustomerBackground. Kept separate from .card (which stays
+     dark and is still used by the admin panel) so this restyle never
+     touches admin/marketing pages. */
+  .card-c {
+    @apply rounded-2xl border border-pink-100 bg-white/90 p-5 shadow-lg shadow-pink-200/50 backdrop-blur-sm;
+  }
+  .btn-ghost-c {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-pink-200 px-5 py-2.5 text-sm font-semibold text-ink-600 transition hover:border-pink-300 hover:bg-pink-50;
+  }
+  .input-base-c {
+    @apply w-full rounded-lg border border-pink-200 bg-white px-4 py-2.5 text-sm text-ink-900 placeholder-ink-400 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20;
+  }
 }
 
 @layer utilities {

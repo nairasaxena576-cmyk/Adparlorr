@@ -1,7 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { prisma } from '../src/lib/prisma';
-import { registerAndLogin, createAdminAndLogin, createFixtureProduct } from './helpers';
-import { uploadProductImage as mockUpload, deleteImage as mockDelete } from '../src/lib/supabaseStorage';
 
 // Never touch the real Supabase Storage bucket from tests — stub the
 // storage module entirely, same pattern as trainingTaskAdmin.test.ts.
@@ -17,6 +15,32 @@ vi.mock('../src/lib/supabaseStorage', () => ({
   }),
   deleteImage: vi.fn(async () => undefined),
 }));
+
+// A plain top-level `import ... from './helpers'` is a static ES import and
+// resolves before any other top-level statement in this file runs — even
+// before the hoisted vi.mock() above has settled — so ./helpers's
+// module-level `export const app = createApp()` can transitively bind
+// productAdmin.service.ts to the REAL supabaseStorage instead of the mock.
+// Deferring the import into beforeAll via vi.resetModules() + dynamic
+// import() forces it to happen strictly after mock registration has fully
+// settled, which is the only sequencing proven (via a prior diagnostic) to
+// bind correctly.
+let registerAndLogin: typeof import('./helpers').registerAndLogin;
+let createAdminAndLogin: typeof import('./helpers').createAdminAndLogin;
+let createFixtureProduct: typeof import('./helpers').createFixtureProduct;
+let mockUpload: typeof import('../src/lib/supabaseStorage').uploadProductImage;
+let mockDelete: typeof import('../src/lib/supabaseStorage').deleteImage;
+
+beforeAll(async () => {
+  vi.resetModules();
+  const helpers = await import('./helpers');
+  registerAndLogin = helpers.registerAndLogin;
+  createAdminAndLogin = helpers.createAdminAndLogin;
+  createFixtureProduct = helpers.createFixtureProduct;
+  const storage = await import('../src/lib/supabaseStorage');
+  mockUpload = storage.uploadProductImage;
+  mockDelete = storage.deleteImage;
+});
 
 describe('products (admin)', () => {
   beforeEach(() => {
@@ -161,8 +185,13 @@ describe('products (admin)', () => {
   });
 
   it('reorders products by swapping displayOrder without ever colliding', async () => {
-    const p1 = await createFixtureProduct({ displayOrder: 901 });
-    const p2 = await createFixtureProduct({ displayOrder: 902 });
+    // Two consecutive default-displayOrder fixtures are guaranteed adjacent
+    // in sorted order regardless of what other fixture rows already exist
+    // in this file (Product rows are never cleared between tests) — a
+    // hardcoded literal value here would risk colliding with an earlier
+    // test's still-present row.
+    const p1 = await createFixtureProduct();
+    const p2 = await createFixtureProduct();
     const admin = await createAdminAndLogin();
 
     const res = await admin.agent
@@ -173,8 +202,8 @@ describe('products (admin)', () => {
 
     const reloaded1 = await prisma.product.findUnique({ where: { id: p1.id } });
     const reloaded2 = await prisma.product.findUnique({ where: { id: p2.id } });
-    expect(reloaded2!.displayOrder).toBe(901);
-    expect(reloaded1!.displayOrder).toBe(902);
+    expect(reloaded2!.displayOrder).toBe(p1.displayOrder);
+    expect(reloaded1!.displayOrder).toBe(p2.displayOrder);
   });
 
   it('deletes a product with no submissions, cleaning up its storage object', async () => {
@@ -191,25 +220,33 @@ describe('products (admin)', () => {
   });
 
   it('blocks deleting a product that already has a customer submission, preserving history', async () => {
-    const product = await createFixtureProduct();
     const admin = await createAdminAndLogin();
     const user = await registerAndLogin();
+
+    // submitOrder() only accepts the customer's actual current workbench
+    // product (server-decided) — not an arbitrary freshly-created fixture —
+    // so fetch it rather than assuming which product that is.
+    const workbenchRes = await user.agent.get('/api/orders/workbench');
+    const currentProduct = workbenchRes.body.data.workbench.currentProduct;
 
     const submitRes = await user.agent
       .post('/api/orders')
       .set('X-CSRF-Token', user.csrfToken)
-      .send({ productId: product.id });
+      .send({ productId: currentProduct.id });
     expect(submitRes.status).toBe(201);
 
     const del = await admin.agent
-      .delete(`/api/admin/products/${product.id}`)
+      .delete(`/api/admin/products/${currentProduct.id}`)
       .set('X-CSRF-Token', admin.csrfToken);
     expect(del.status).toBe(409);
 
     // The product and the historical submission both survive intact.
-    expect(await prisma.product.findUnique({ where: { id: product.id } })).not.toBeNull();
+    expect(await prisma.product.findUnique({ where: { id: currentProduct.id } })).not.toBeNull();
+    // POST /api/orders does not return a `submission` field (see
+    // SubmitOrderResult) — look the row up directly via the unique
+    // (userId, productId) pair instead.
     const submission = await prisma.taskSubmission.findUnique({
-      where: { id: submitRes.body.data.submission.id },
+      where: { userId_productId: { userId: user.body.data.user.id, productId: currentProduct.id } },
     });
     expect(submission).not.toBeNull();
     expect(mockDelete).not.toHaveBeenCalled();
@@ -239,27 +276,37 @@ describe('products (admin)', () => {
   });
 
   it('historical submissions keep their own reward/cost snapshot after the product is edited', async () => {
-    const product = await createFixtureProduct({ reward: 1, cost: 0.4 });
     const admin = await createAdminAndLogin();
     const user = await registerAndLogin();
+
+    const workbenchRes = await user.agent.get('/api/orders/workbench');
+    const currentProduct = workbenchRes.body.data.workbench.currentProduct;
+    // submitOrder() snapshots costAmount from the product's `price` (what
+    // the workbench actually charges against) and rewardAmount from the
+    // computed 1% commission on that price — not the legacy `reward`/`cost`
+    // admin fields, which play no part in this calculation.
+    const expectedCost = currentProduct.price;
+    const expectedReward = Math.round(expectedCost * 0.01 * 100) / 100;
 
     const submitRes = await user.agent
       .post('/api/orders')
       .set('X-CSRF-Token', user.csrfToken)
-      .send({ productId: product.id });
-    expect(submitRes.body.data.submission.rewardAmount).toBe(1);
-    expect(submitRes.body.data.submission.costAmount).toBe(0.4);
+      .send({ productId: currentProduct.id });
+    expect(submitRes.status).toBe(201);
 
     await admin.agent
-      .put(`/api/admin/products/${product.id}`)
+      .put(`/api/admin/products/${currentProduct.id}`)
       .set('X-CSRF-Token', admin.csrfToken)
-      .send({ reward: 99, cost: 50 });
+      .send({ reward: 99, cost: 50, price: 9999 });
 
+    // POST /api/orders does not return a `submission` field (see
+    // SubmitOrderResult) — look the row up directly via the unique
+    // (userId, productId) pair instead.
     const submission = await prisma.taskSubmission.findUnique({
-      where: { id: submitRes.body.data.submission.id },
+      where: { userId_productId: { userId: user.body.data.user.id, productId: currentProduct.id } },
     });
-    expect(Number(submission!.rewardAmount)).toBe(1);
-    expect(Number(submission!.costAmount)).toBe(0.4);
+    expect(Number(submission!.rewardAmount)).toBeCloseTo(expectedReward, 5);
+    expect(Number(submission!.costAmount)).toBe(expectedCost);
   });
 });
 
@@ -289,27 +336,35 @@ describe('products (customer)', () => {
   });
 
   it('lets a customer submit a published product (order/task submission still works end-to-end)', async () => {
-    const product = await createFixtureProduct();
     const user = await registerAndLogin();
+
+    // submitOrder() only accepts the server-decided current workbench
+    // product, not an arbitrary product id — fetch it rather than assuming.
+    const workbenchRes = await user.agent.get('/api/orders/workbench');
+    const currentProduct = workbenchRes.body.data.workbench.currentProduct;
 
     const res = await user.agent
       .post('/api/orders')
       .set('X-CSRF-Token', user.csrfToken)
-      .send({ productId: product.id });
+      .send({ productId: currentProduct.id });
 
     expect(res.status).toBe(201);
     expect(res.body.data.user.completedOrders).toBe(1);
   });
 
   it('always submits as the authenticated session user, ignoring any userId in the request body', async () => {
-    const product = await createFixtureProduct();
     const victim = await registerAndLogin();
     const attacker = await registerAndLogin();
+
+    // Both are brand-new users with no submissions yet, so they see the
+    // same current product — fetch it via the attacker's own session.
+    const workbenchRes = await attacker.agent.get('/api/orders/workbench');
+    const currentProduct = workbenchRes.body.data.workbench.currentProduct;
 
     const res = await attacker.agent
       .post('/api/orders')
       .set('X-CSRF-Token', attacker.csrfToken)
-      .send({ productId: product.id, userId: victim.body.data.user.id });
+      .send({ productId: currentProduct.id, userId: victim.body.data.user.id });
 
     expect(res.status).toBe(201);
     expect(res.body.data.user.id).toBe(attacker.body.data.user.id);

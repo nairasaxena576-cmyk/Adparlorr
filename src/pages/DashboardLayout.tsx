@@ -16,6 +16,7 @@ import { useStore } from '@/store/useStore';
 import { useToast } from '@/components/Toast';
 import { LoadingScreen } from '@/components/LoadingScreen';
 import { BottomNav } from '@/components/BottomNav';
+import { CustomerBackground } from '@/components/customer/CustomerBackground';
 
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard, end: true },
@@ -85,7 +86,7 @@ export function DashboardLayout() {
         </div>
       </header>
 
-      <div className="flex">
+      <div className="relative flex min-h-[calc(100vh-4rem)]">
         {/* Sidebar — desktop */}
         <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-64 shrink-0 border-r border-ink-700 bg-ink-900 lg:block">
           <SidebarContent onNavigate={closeSidebar} />
@@ -107,11 +108,16 @@ export function DashboardLayout() {
           </div>
         )}
 
-        {/* Main — bottom padding on mobile clears the fixed BottomNav so it
-            never covers the last bit of page content; not needed at lg:
-            since the bottom nav is hidden there. */}
-        <main className="min-h-[calc(100vh-4rem)] flex-1 px-4 py-6 pb-24 sm:px-6 sm:py-8 lg:pb-8">
-          <Outlet />
+        {/* Main — decorative pastel background sits behind the real content
+            (CustomerBackground is purely visual, z-indexed below Outlet).
+            Bottom padding on mobile clears the fixed BottomNav so it never
+            covers the last bit of page content; not needed at lg: since the
+            bottom nav is hidden there. */}
+        <main className="relative min-h-[calc(100vh-4rem)] flex-1 overflow-hidden px-4 pb-24 pt-24 sm:px-6 sm:pb-8 sm:pt-28 lg:pb-8">
+          <CustomerBackground />
+          <div className="relative z-10 py-6 sm:py-8">
+            <Outlet />
+          </div>
         </main>
       </div>
 

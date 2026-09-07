@@ -11,3 +11,11 @@ export const creditUserBodySchema = z.object({
 export const resetUserParamsSchema = z.object({
   userId: z.string().uuid('A valid userId is required.'),
 });
+
+export const referralIdParamsSchema = z.object({
+  referralId: z.string().uuid('A valid referralId is required.'),
+});
+
+export const resolveNegativeBalanceParamsSchema = z.object({
+  userId: z.string().uuid('A valid userId is required.'),
+});
