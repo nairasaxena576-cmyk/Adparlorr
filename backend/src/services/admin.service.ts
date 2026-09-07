@@ -246,7 +246,7 @@ export async function resetUserTasksAdmin(userId: string): Promise<SafeUser> {
     await deleteSubmissionsForUser(userId, tx);
     return updateUser(
       userId,
-      { completedOrders: 0, mergeTriggered: false, isMerged: false },
+      { completedOrders: 0, mergeTriggered: false, mergedMilestonesReached: 0, isMerged: false },
       tx
     );
   });

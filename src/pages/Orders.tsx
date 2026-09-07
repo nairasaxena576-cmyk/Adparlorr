@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   AlertTriangle,
   ArrowRight,
@@ -71,6 +72,8 @@ export function Orders() {
       ? 'Completed'
       : status === 'NOT_READY'
       ? 'Not Ready'
+      : status === 'TIER_LOCKED'
+      ? 'Locked'
       : progress.completed === 0
       ? 'Start'
       : 'Continue';
@@ -81,7 +84,12 @@ export function Orders() {
       <div className="card-c">
         <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
           <div>
-            <p className="text-sm text-ink-500">Today's Product Set (Simulated)</p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm text-ink-500">Today's Product Set (Simulated)</p>
+              <span className="rounded-full bg-pink-100 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide text-brand-600">
+                {workbench.tier}
+              </span>
+            </div>
             <p className="mt-1 text-3xl font-extrabold text-ink-900">
               {progress.completed} <span className="text-ink-400">/</span> {progress.total}
             </p>
@@ -89,7 +97,9 @@ export function Orders() {
           <a
             href="#current-action"
             className={`btn-brand justify-center px-8 py-3.5 text-base ${
-              status === 'COMPLETED' || status === 'NOT_READY' ? 'pointer-events-none opacity-70' : ''
+              status === 'COMPLETED' || status === 'NOT_READY' || status === 'TIER_LOCKED'
+                ? 'pointer-events-none opacity-70'
+                : ''
             }`}
           >
             {heroLabel} ({progress.completed}/{progress.total}) <ArrowRight className="h-4 w-4" />
@@ -142,7 +152,16 @@ export function Orders() {
 
       {/* Current-action card — exactly one of the states below */}
       <div id="current-action" className="scroll-mt-24">
-        {status === 'NOT_READY' && <NotReadyCard eligibleCount={workbench.eligibleCount} total={progress.total} />}
+        {status === 'NOT_READY' && (
+          <NotReadyCard tier={workbench.tier} eligibleCount={workbench.eligibleCount} total={workbench.bandRequired} />
+        )}
+        {status === 'TIER_LOCKED' && (
+          <TierLockedCard
+            tier={workbench.tier}
+            nextTier={workbench.nextTier}
+            depositsNeeded={workbench.depositsNeededForNextTier}
+          />
+        )}
         {status === 'SHORTFALL' && (
           <ShortfallCard shortfall={workbench.shortfall} resolving={resolving} onResolve={handleResolve} />
         )}
@@ -354,7 +373,7 @@ function CompletedCard({ todaysCommission, subsidy }: { todaysCommission: number
   );
 }
 
-function NotReadyCard({ eligibleCount, total }: { eligibleCount: number; total: number }) {
+function NotReadyCard({ tier, eligibleCount, total }: { tier: string; eligibleCount: number; total: number }) {
   return (
     <div className="card-c text-center">
       <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-pink-100">
@@ -362,13 +381,45 @@ function NotReadyCard({ eligibleCount, total }: { eligibleCount: number; total: 
       </div>
       <h3 className="mt-4 text-lg font-bold text-ink-900">Workbench Not Ready</h3>
       <p className="mt-2 text-sm leading-relaxed text-ink-600">
-        {total} eligible products are required to start a workbench set. Check back once more products are
-        available.
+        {total} eligible {tier}-tier products are required to start this workbench band. Check back once more
+        products are available.
       </p>
       <p className="mt-4 text-2xl font-extrabold text-ink-900">
         {eligibleCount} <span className="text-ink-400">/</span> {total}
       </p>
-      <p className="mt-1 text-xs text-ink-400">eligible products</p>
+      <p className="mt-1 text-xs text-ink-400">eligible {tier}-tier products</p>
+    </div>
+  );
+}
+
+function TierLockedCard({
+  tier,
+  nextTier,
+  depositsNeeded,
+}: {
+  tier: string;
+  nextTier: string | null;
+  depositsNeeded: number | null;
+}) {
+  return (
+    <div className="card-c text-center">
+      <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-amber-100">
+        <Layers className="h-7 w-7 text-amber-600" />
+      </div>
+      <h3 className="mt-4 text-lg font-bold text-ink-900">{tier} Products Completed</h3>
+      <p className="mt-2 text-sm leading-relaxed text-ink-600">
+        You've submitted every available {tier}-tier product.
+        {nextTier && depositsNeeded !== null && depositsNeeded > 0
+          ? ` Deposit $${depositsNeeded.toFixed(2)} more to unlock ${nextTier}-tier products.`
+          : nextTier
+          ? ` Increase your deposits to unlock ${nextTier}-tier products.`
+          : ''}
+      </p>
+      {nextTier && (
+        <Link to="/dashboard/wallet" className="btn-brand mt-5 justify-center">
+          Go to Wallet to Deposit <ArrowRight className="h-4 w-4" />
+        </Link>
+      )}
     </div>
   );
 }

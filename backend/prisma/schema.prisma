@@ -26,6 +26,12 @@ model User {
   totalDeposits       Decimal          @default(0) @db.Decimal(12, 2)
   completedOrders     Int              @default(0)
   mergeTriggered      Boolean          @default(false)
+  // How many of the 3 fixed workbench Merged Product milestones (orders 10,
+  // 20, 30 — see config/simulation.ts's MERGE_ORDER_MILESTONES) this user has
+  // already triggered. Replaces the old single-shot mergeTriggered boolean
+  // for gating (mergeTriggered itself is kept, still set true on the first
+  // merge, for any existing reader relying on it as "has ever merged").
+  mergedMilestonesReached Int          @default(0)
   isMerged            Boolean          @default(false)
   trainingCompletedAt DateTime?
   // Admin-granted tier override (pay-to-unlock flow): a customer can reach
@@ -68,6 +74,12 @@ model Product {
   // Defaults to 0: a product only appears in the customer workbench once
   // an admin gives it a real price via Product Management.
   price           Decimal          @default(0) @db.Decimal(12, 2)
+  // Which customer tier's workbench band this product belongs to (see
+  // utils/tiers.ts / order.service.ts's tier-banded workbench). Null means
+  // "Bronze" — every product created before this field existed is treated
+  // as Bronze-eligible so none of them silently disappear from the
+  // workbench. Never trusted from a client; admin-set only.
+  tierEligibility Tier?
   imageUrl        String?
   isActive        Boolean          @default(true)
   createdAt       DateTime         @default(now())
@@ -75,6 +87,7 @@ model Product {
   taskSubmissions TaskSubmission[]
 
   @@index([isActive])
+  @@index([tierEligibility])
 }
 
 model TaskSubmission {

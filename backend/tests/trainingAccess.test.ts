@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { prisma } from '../src/lib/prisma';
+import { TIERS, type Tier } from '../src/utils/tiers';
 import {
   registerAndLogin,
   createAdminAndLogin,
@@ -10,14 +11,15 @@ import {
 // Raises a freshly-registered user to a specific tier by directly setting
 // the real columns the (server-side) tier calculation reads — completely
 // independent of, and never trusting, anything the frontend could claim.
-async function setTier(userId: string, tier: 'Bronze' | 'Silver' | 'Gold' | 'Platinum') {
-  const thresholds = {
-    Bronze: { completedOrders: 0, totalDeposits: 0 },
-    Silver: { completedOrders: 50, totalDeposits: 500 },
-    Gold: { completedOrders: 200, totalDeposits: 2000 },
-    Platinum: { completedOrders: 500, totalDeposits: 5000 },
-  } as const;
-  await prisma.user.update({ where: { id: userId }, data: thresholds[tier] });
+// Uses each tier's own (minOrders, minDeposits) from the real tiers util
+// rather than a second hardcoded set of numbers, so this test never drifts
+// out of sync with the actual thresholds.
+async function setTier(userId: string, tier: Tier) {
+  const { minOrders, minDeposits } = TIERS[tier];
+  await prisma.user.update({
+    where: { id: userId },
+    data: { completedOrders: minOrders, totalDeposits: minDeposits },
+  });
 }
 
 async function verifyReferral(user: Awaited<ReturnType<typeof registerAndLogin>>, referralCode: string) {

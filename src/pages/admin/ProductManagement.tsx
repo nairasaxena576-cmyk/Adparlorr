@@ -18,7 +18,9 @@ import {
 import { useStore } from '@/store/useStore';
 import { useToast } from '@/components/Toast';
 import { LoadingScreen } from '@/components/LoadingScreen';
-import type { AdminProduct } from '@/types';
+import type { AdminProduct, Tier } from '@/types';
+
+const TIER_OPTIONS: Tier[] = ['Bronze', 'Silver', 'Gold', 'Platinum'];
 
 export function AdminProductManagement() {
   const authStatus = useStore((s) => s.authStatus);
@@ -190,18 +192,25 @@ function ProductListView() {
 
       {readiness && (
         <div
-          className={`mt-4 flex items-center justify-between rounded-xl border px-4 py-3 text-sm ${
+          className={`mt-4 rounded-xl border px-4 py-3 text-sm ${
             readiness.ready
               ? 'border-brand-500/40 bg-brand-500/10 text-brand-300'
               : 'border-amber-500/40 bg-amber-500/10 text-amber-300'
           }`}
         >
-          <span className="font-semibold">
-            Workbench readiness: {readiness.eligibleCount} / 45 eligible products
-          </span>
-          <span className="rounded-full bg-black/20 px-2.5 py-1 text-xs font-bold uppercase tracking-wide">
-            {readiness.ready ? 'Ready' : 'Not Ready'}
-          </span>
+          <div className="flex items-center justify-between">
+            <span className="font-semibold">Workbench readiness by tier</span>
+            <span className="rounded-full bg-black/20 px-2.5 py-1 text-xs font-bold uppercase tracking-wide">
+              {readiness.ready ? 'Ready' : 'Not Ready'}
+            </span>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-xs">
+            {readiness.tiers.map((t) => (
+              <span key={t.tier} className={t.ready ? '' : 'font-semibold'}>
+                {t.tier}: {t.eligibleCount} / {t.required}
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
@@ -216,6 +225,7 @@ function ProductListView() {
                 <th className="px-4 py-3 text-right font-semibold">Reward</th>
                 <th className="px-4 py-3 text-right font-semibold">Fee</th>
                 <th className="px-4 py-3 font-semibold">Status</th>
+                <th className="px-4 py-3 font-semibold">Tier</th>
                 <th className="px-4 py-3 font-semibold">Eligibility</th>
                 <th className="px-4 py-3 font-semibold">Order</th>
                 <th className="px-4 py-3 font-semibold">Actions</th>
@@ -224,7 +234,7 @@ function ProductListView() {
             <tbody className="divide-y divide-ink-700">
               {sorted.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-ink-400">
+                  <td colSpan={9} className="px-4 py-8 text-center text-ink-400">
                     No products yet. Add one to get started.
                   </td>
                 </tr>
@@ -260,6 +270,7 @@ function ProductListView() {
                           {product.isActive ? 'Published' : 'Draft'}
                         </span>
                       </td>
+                      <td className="px-4 py-3 text-ink-300">{product.tierEligibility}</td>
                       <td className="px-4 py-3 text-ink-300">
                         <span
                           className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
@@ -379,6 +390,7 @@ function ProductFormModal({
   const [imageUrl, setImageUrl] = useState(product?.imageUrl ?? '');
   const [category, setCategory] = useState(product?.category ?? '');
   const [price, setPrice] = useState(product ? String(product.price) : '');
+  const [tierEligibility, setTierEligibility] = useState<Tier>(product?.tierEligibility ?? 'Bronze');
   const [reward, setReward] = useState(product ? String(product.reward) : '');
   const [cost, setCost] = useState(product ? String(product.cost) : '');
   const [isActive, setIsActive] = useState(product?.isActive ?? false);
@@ -432,6 +444,7 @@ function ProductFormModal({
       name: name.trim(),
       category: category.trim(),
       price: priceNum,
+      tierEligibility,
       reward: rewardNum,
       cost: costNum,
       imageUrl: imageUrl || null,
@@ -513,6 +526,23 @@ function ProductFormModal({
           <p className="mt-1.5 text-xs text-ink-500">
             Drives the workbench commission (1% normal, 10% merged). Leave at 0 to keep this product
             out of the customer workbench for now.
+          </p>
+        </Field>
+
+        <Field label="Tier Eligibility">
+          <select
+            value={tierEligibility}
+            onChange={(e) => setTierEligibility(e.target.value as Tier)}
+            className="input-base"
+            disabled={saving}
+          >
+            {TIER_OPTIONS.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+          <p className="mt-1.5 text-xs text-ink-500">
+            Which customer tier's workbench band this product appears in. Bronze customers only ever see
+            Bronze products, Platinum only Platinum, and so on.
           </p>
         </Field>
 

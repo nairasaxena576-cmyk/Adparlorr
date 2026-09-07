@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { prisma } from '../src/lib/prisma';
+import { TIERS } from '../src/utils/tiers';
+
+// Bronze band width — the customer workbench only reports a NORMAL status
+// with a real currentProduct once at least this many Bronze-eligible
+// products exist (see order.service.ts's loadWorkbenchSet). Tests below
+// that need a real currentProduct must seed this many first.
+const BRONZE_BAND_SIZE = TIERS.Bronze.maxOrders - TIERS.Bronze.minOrders;
 
 // Never touch the real Supabase Storage bucket from tests — stub the
 // storage module entirely, same pattern as trainingTaskAdmin.test.ts.
@@ -28,6 +35,7 @@ vi.mock('../src/lib/supabaseStorage', () => ({
 let registerAndLogin: typeof import('./helpers').registerAndLogin;
 let createAdminAndLogin: typeof import('./helpers').createAdminAndLogin;
 let createFixtureProduct: typeof import('./helpers').createFixtureProduct;
+let createFixtureWorkbenchSet: typeof import('./helpers').createFixtureWorkbenchSet;
 let mockUpload: typeof import('../src/lib/supabaseStorage').uploadProductImage;
 let mockDelete: typeof import('../src/lib/supabaseStorage').deleteImage;
 
@@ -37,6 +45,7 @@ beforeAll(async () => {
   registerAndLogin = helpers.registerAndLogin;
   createAdminAndLogin = helpers.createAdminAndLogin;
   createFixtureProduct = helpers.createFixtureProduct;
+  createFixtureWorkbenchSet = helpers.createFixtureWorkbenchSet;
   const storage = await import('../src/lib/supabaseStorage');
   mockUpload = storage.uploadProductImage;
   mockDelete = storage.deleteImage;
@@ -220,6 +229,7 @@ describe('products (admin)', () => {
   });
 
   it('blocks deleting a product that already has a customer submission, preserving history', async () => {
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE);
     const admin = await createAdminAndLogin();
     const user = await registerAndLogin();
 
@@ -276,6 +286,7 @@ describe('products (admin)', () => {
   });
 
   it('historical submissions keep their own reward/cost snapshot after the product is edited', async () => {
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE);
     const admin = await createAdminAndLogin();
     const user = await registerAndLogin();
 
@@ -336,6 +347,7 @@ describe('products (customer)', () => {
   });
 
   it('lets a customer submit a published product (order/task submission still works end-to-end)', async () => {
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE);
     const user = await registerAndLogin();
 
     // submitOrder() only accepts the server-decided current workbench
@@ -353,6 +365,7 @@ describe('products (customer)', () => {
   });
 
   it('always submits as the authenticated session user, ignoring any userId in the request body', async () => {
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE);
     const victim = await registerAndLogin();
     const attacker = await registerAndLogin();
 

@@ -24,10 +24,21 @@ export default defineConfig({
       // tests/setup.ts can verify the test database isn't literally the
       // same database as production — never used to open a connection.
       APP_DATABASE_URL_FOR_SAFETY_CHECK: process.env.DATABASE_URL ?? '',
-      // Exercises the exact same "first N eligible products" workbench
-      // logic as production (default 45) with a much smaller, fast,
-      // deterministic N — no other test depends on this value.
-      SIMULATION_WORKBENCH_SET_SIZE: '5',
+      // Continuous 4-tier workbench bands (see utils/tiers.ts), shrunk for
+      // fast fixtures — Bronze stays wide enough (36) to exercise all 3
+      // fixed Merged Product milestones (orders 10/20/30, never
+      // env-configurable) with a few spare normal-only slots afterward to
+      // confirm no 4th merge ever fires.
+      SIMULATION_BRONZE_ORDER_BAND: '36',
+      SIMULATION_SILVER_ORDER_BAND: '2',
+      SIMULATION_GOLD_ORDER_BAND: '2',
+      SIMULATION_PLATINUM_ORDER_BAND: '2',
+      // Deposit caps are cheap to set directly via fixtures regardless of
+      // size, so these stay at their real production values.
+      SIMULATION_BRONZE_DEPOSIT_CAP: '100',
+      SIMULATION_SILVER_DEPOSIT_CAP: '500',
+      SIMULATION_GOLD_DEPOSIT_CAP: '2000',
+      SIMULATION_PLATINUM_DEPOSIT_CAP: '5000',
     },
   },
 });

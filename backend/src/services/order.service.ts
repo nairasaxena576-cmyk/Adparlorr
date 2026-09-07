@@ -1,9 +1,10 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, type User } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import { roundMoney } from '../utils/money';
 import { SIMULATION } from '../config/simulation';
-import { listWorkbenchProducts } from '../repositories/product.repository';
+import { TIERS, resolveEffectiveTier, type Tier } from '../utils/tiers';
+import { listWorkbenchProductsForTier } from '../repositories/product.repository';
 import {
   createSubmission,
   listSubmissionsForUser,
@@ -18,17 +19,21 @@ import { toSafeUser, type SafeUser } from './auth.service';
 // Workbench business rules (server is the sole source of truth — the
 // frontend only ever displays what these functions return). Everything
 // here is DEMO/SIMULATION accounting, entirely separate from the real
-// Wallet/crypto-deposit system:
+// Wallet/crypto-deposit system.
 //
-//   One workbench set is always exactly SIMULATION.WORKBENCH_SET_SIZE (45)
-//   product slots — the first N eligible (active + priced) products by
-//   displayOrder, never derived from however many happen to exist. Fewer
-//   than 45 eligible products means the workbench isn't ready yet.
+// The workbench is one continuous 55-order ladder (production defaults —
+// see config/simulation.ts's TIER_ORDER_BANDS) split into 4 tier "bands":
+// Bronze (orders 0-40), Silver (40-45), Gold (45-50), Platinum (50-55).
+// Which band a customer draws products from is their current effective
+// tier (utils/tiers.ts's resolveEffectiveTier) — never a second,
+// order-only tier concept. Each band pulls from that tier's own eligible
+// (active + priced + tierEligibility-matched) product pool, sequentially
+// by displayOrder, exactly like the old flat 45-product system did.
 //
 //   Normal product:  commission = price * 1%
-//   Merged product:  commission = combined value * 10%  (bundles the next
-//                     1-3 not-yet-submitted slots; same one-time trigger as
-//                     the pre-existing mergeTriggered/isMerged mechanic)
+//   Merged product:  commission = combined value * 10%  — fires exactly 3
+//                     times, at cumulative order counts 10/20/30 (see
+//                     SIMULATION.MERGE_ORDER_MILESTONES), never again after.
 //   Every submission (normal or merged) deducts the product's full price
 //   from User.workbenchBalance and adds the commission — this demo balance
 //   can go negative (a "shortfall"), which blocks the *next* submission
@@ -60,12 +65,26 @@ export interface MergeBundleDto {
   commission: number;
 }
 
-export type WorkbenchStatus = 'NOT_READY' | 'SHORTFALL' | 'COMPLETED' | 'MERGE' | 'NORMAL';
+export type WorkbenchStatus = 'NOT_READY' | 'TIER_LOCKED' | 'SHORTFALL' | 'COMPLETED' | 'MERGE' | 'NORMAL';
 
 export interface WorkbenchState {
   status: WorkbenchStatus;
+  // GLOBAL cumulative progress across the entire 55-order ladder — never a
+  // per-band/per-tier reset.
   progress: { completed: number; total: number };
+  tier: Tier;
+  nextTier: Tier | null;
+  // Eligible-product count and required size for the CURRENT tier's band
+  // specifically (not the grand total) — what an admin needs to stock next.
   eligibleCount: number;
+  bandRequired: number;
+  // Only meaningful while status is TIER_LOCKED (or generally informative
+  // otherwise) — how much more real deposit is needed to reach the next
+  // tier's band. Null once at Platinum (no further tier to unlock).
+  depositsNeededForNextTier: number | null;
+  // Demo/simulation-only — entirely separate from the real Wallet balance
+  // (User.balance). See order.service.ts / schema.prisma for the full
+  // real-vs-simulated separation.
   workbenchBalance: number;
   shortfall: number;
   todaysCommission: number;
@@ -83,34 +102,44 @@ function startOfUtcDay(): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 }
 
-// The current workbench SET is always the first WORKBENCH_SET_SIZE eligible
-// products by displayOrder — capped, never sized by however many happen to
-// exist. `ready` is false whenever fewer than that many are eligible.
-async function loadWorkbenchSet(userId: string) {
-  const eligible = await listWorkbenchProducts();
-  const setSize = SIMULATION.WORKBENCH_SET_SIZE;
-  const ready = eligible.length >= setSize;
+function getNextTier(tier: Tier): Tier | null {
+  const order: Tier[] = ['Bronze', 'Silver', 'Gold', 'Platinum'];
+  const idx = order.indexOf(tier);
+  return idx >= 0 && idx < order.length - 1 ? order[idx + 1] : null;
+}
+
+// The current workbench band is always the first `bandSize` eligible
+// products (for the customer's current tier) by displayOrder — capped,
+// never sized by however many happen to exist. `ready` is false whenever
+// fewer than that many are eligible for this specific tier.
+async function loadWorkbenchSet(user: Pick<User, 'id' | 'completedOrders' | 'totalDeposits' | 'manualTier'>) {
+  const tier = resolveEffectiveTier(user.completedOrders, Number(user.totalDeposits), user.manualTier);
+  const band = TIERS[tier];
+  const bandSize = band.maxOrders - band.minOrders;
+
+  const eligible = await listWorkbenchProductsForTier(tier);
+  const ready = eligible.length >= bandSize;
 
   if (!ready) {
-    return { ready, eligibleCount: eligible.length, workbenchSet: [], remaining: [] as typeof eligible };
+    return { ready, tier, bandSize, eligibleCount: eligible.length, workbenchSet: [], remaining: [] as typeof eligible };
   }
 
-  const workbenchSet = eligible.slice(0, setSize);
+  const workbenchSet = eligible.slice(0, bandSize);
   const submitted = await listSubmittedProductIds(
-    userId,
+    user.id,
     workbenchSet.map((p) => p.id)
   );
   const submittedIds = new Set(submitted.map((s) => s.productId));
   const remaining = workbenchSet.filter((p) => !submittedIds.has(p.id));
-  return { ready, eligibleCount: eligible.length, workbenchSet, remaining };
+  return { ready, tier, bandSize, eligibleCount: eligible.length, workbenchSet, remaining };
 }
 
 export async function getWorkbenchState(userId: string): Promise<WorkbenchState> {
   const user = await findUserById(userId);
   if (!user) throw AppError.unauthorized();
 
-  const { ready, eligibleCount, workbenchSet, remaining } = await loadWorkbenchSet(userId);
-  const completed = workbenchSet.length - remaining.length;
+  const { ready, tier, bandSize, eligibleCount, remaining } = await loadWorkbenchSet(user);
+  const nextTier = getNextTier(tier);
   const demoBalance = Number(user.workbenchBalance);
   const shortfall = demoBalance < 0 ? roundMoney(-demoBalance) : 0;
 
@@ -119,20 +148,32 @@ export async function getWorkbenchState(userId: string): Promise<WorkbenchState>
   const totalEarnings = roundMoney(Number(user.totalEarnings));
   const subsidy = roundMoney(totalEarnings * 0.2);
 
-  const willMerge = user.completedOrders + 1 >= SIMULATION.MERGE_THRESHOLD && !user.mergeTriggered;
+  const nextMilestone = SIMULATION.MERGE_ORDER_MILESTONES[user.mergedMilestonesReached];
+  const willMerge = nextMilestone !== undefined && user.completedOrders + 1 >= nextMilestone;
+
+  const depositsNeededForNextTier = nextTier
+    ? roundMoney(Math.max(0, TIERS[nextTier].minDeposits - Number(user.totalDeposits)))
+    : null;
 
   let status: WorkbenchStatus;
   let currentProduct: WorkbenchProductDto | null = null;
   let mergeBundle: MergeBundleDto | null = null;
 
+  const grandTotal = TIERS.Platinum.maxOrders;
+
   if (!ready) {
-    // Fewer than WORKBENCH_SET_SIZE eligible products exist — never report
-    // a false completed (or any other) progress state in this case.
+    // Fewer than this band's required eligible products exist — never
+    // report a false completed (or any other) progress state.
     status = 'NOT_READY';
   } else if (shortfall > 0) {
     status = 'SHORTFALL';
   } else if (remaining.length === 0) {
-    status = 'COMPLETED';
+    // This band's slots are all submitted. If the customer's effective
+    // tier has already advanced (orders AND deposits both cleared this
+    // band), the very next call resolves a fresh, non-empty next band —
+    // this branch is only reachable at the true end (Platinum) or when
+    // deposits haven't caught up to the order milestone yet.
+    status = tier === 'Platinum' && user.completedOrders >= grandTotal ? 'COMPLETED' : 'TIER_LOCKED';
   } else if (willMerge) {
     status = 'MERGE';
     const bundleProducts = remaining.slice(0, Math.min(3, remaining.length));
@@ -149,8 +190,12 @@ export async function getWorkbenchState(userId: string): Promise<WorkbenchState>
 
   return {
     status,
-    progress: { completed, total: SIMULATION.WORKBENCH_SET_SIZE },
+    progress: { completed: Math.min(user.completedOrders, grandTotal), total: grandTotal },
+    tier,
+    nextTier,
     eligibleCount,
+    bandRequired: bandSize,
+    depositsNeededForNextTier,
     workbenchBalance: roundMoney(demoBalance),
     shortfall,
     todaysCommission,
@@ -173,10 +218,10 @@ export async function submitOrder(userId: string, productId: string): Promise<Su
   const user = await findUserById(userId);
   if (!user) throw AppError.unauthorized();
 
-  const { ready, remaining } = await loadWorkbenchSet(userId);
+  const { ready, tier, bandSize, remaining } = await loadWorkbenchSet(user);
   if (!ready) {
     throw AppError.conflict(
-      `The workbench is not ready yet — ${SIMULATION.WORKBENCH_SET_SIZE} eligible products are required.`
+      `The workbench is not ready yet — ${bandSize} eligible ${tier}-tier products are required.`
     );
   }
 
@@ -186,17 +231,25 @@ export async function submitOrder(userId: string, productId: string): Promise<Su
     );
   }
 
+  const grandTotal = TIERS.Platinum.maxOrders;
   if (remaining.length === 0) {
-    throw AppError.conflict('You have already completed every product in this workbench set.');
+    if (tier === 'Platinum' && user.completedOrders >= grandTotal) {
+      throw AppError.conflict('You have already completed every product in this workbench.');
+    }
+    throw AppError.conflict(
+      'You have completed every available product for your current tier — increase your deposits to unlock the next tier.'
+    );
   }
   // The server — never the client — decides which product is "current".
   // Rejecting any other id prevents a customer from assigning themselves a
-  // different (e.g. cheaper) product than the one actually next in line.
+  // different (e.g. cheaper, or wrong-tier) product than the one actually
+  // next in line.
   if (remaining[0].id !== productId) {
     throw AppError.badRequest('This is not your current assigned product.');
   }
 
-  const willMerge = user.completedOrders + 1 >= SIMULATION.MERGE_THRESHOLD && !user.mergeTriggered;
+  const nextMilestone = SIMULATION.MERGE_ORDER_MILESTONES[user.mergedMilestonesReached];
+  const willMerge = nextMilestone !== undefined && user.completedOrders + 1 >= nextMilestone;
   const bundle = willMerge ? remaining.slice(0, Math.min(3, remaining.length)) : [remaining[0]];
 
   const rows = bundle.map((product) => {
@@ -238,7 +291,9 @@ export async function submitOrder(userId: string, productId: string): Promise<Su
           workbenchBalance: { increment: netAmount },
           totalEarnings: { increment: totalCommission },
           completedOrders: newCompletedOrders,
-          ...(willMerge ? { mergeTriggered: true, isMerged: true } : {}),
+          ...(willMerge
+            ? { mergeTriggered: true, isMerged: true, mergedMilestonesReached: { increment: 1 } }
+            : {}),
         },
         tx
       );

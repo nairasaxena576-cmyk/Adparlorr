@@ -200,6 +200,10 @@ export async function createFixtureProduct(
     // > 0 by default since the customer workbench excludes price=0
     // products (see product.repository.ts's listWorkbenchProducts).
     price?: number;
+    // Which tier's workbench band this product belongs to. Defaults to
+    // undefined (= untagged = Bronze, per schema.prisma's doc comment) —
+    // only pass this to build a Silver/Gold/Platinum fixture set.
+    tierEligibility?: 'Bronze' | 'Silver' | 'Gold' | 'Platinum';
     imageUrl?: string | null;
     isActive?: boolean;
     displayOrder?: number;
@@ -213,6 +217,7 @@ export async function createFixtureProduct(
       reward: overrides.reward ?? 1,
       cost: overrides.cost ?? 0.3,
       price: overrides.price ?? 100,
+      tierEligibility: overrides.tierEligibility,
       imageUrl: overrides.imageUrl ?? null,
       isActive: overrides.isActive ?? true,
       displayOrder: overrides.displayOrder ?? 900 + productCounter,
@@ -263,13 +268,18 @@ export async function completeTrainingTasks(user: Session, taskCount = 2) {
 
 /**
  * Creates `count` eligible (active, priced) fixture products in ascending
- * displayOrder — the minimum needed to make the workbench "ready" (see
- * SIMULATION_WORKBENCH_SET_SIZE, overridden to 5 in vitest.config.ts).
+ * displayOrder, optionally tagged for one tier's workbench band — the
+ * minimum needed to make that band "ready" (see SIMULATION_*_ORDER_BAND,
+ * shrunk for tests in vitest.config.ts).
  */
-export async function createFixtureWorkbenchSet(count: number, priceEach = 100) {
+export async function createFixtureWorkbenchSet(
+  count: number,
+  priceEach = 100,
+  tierEligibility?: 'Bronze' | 'Silver' | 'Gold' | 'Platinum'
+) {
   const products = [];
   for (let i = 0; i < count; i += 1) {
-    products.push(await createFixtureProduct({ price: priceEach }));
+    products.push(await createFixtureProduct({ price: priceEach, tierEligibility }));
   }
   return products;
 }

@@ -32,12 +32,24 @@ const envSchema = z.object({
   ADMIN_EMAIL: z.string().email().optional(),
   ADMIN_INITIAL_PASSWORD: z.string().min(6).optional(),
 
-  SIMULATION_MERGE_THRESHOLD: z.coerce.number().int().positive().default(15),
   SIMULATION_MIN_WITHDRAWAL_BALANCE: z.coerce.number().nonnegative().default(100),
   SIMULATION_MAX_DEPOSIT_AMOUNT: z.coerce.number().positive().default(100_000),
-  // Fixed size of one customer workbench set — always exactly 45 unless
-  // explicitly reconfigured. Never derived from catalog size.
-  SIMULATION_WORKBENCH_SET_SIZE: z.coerce.number().int().positive().default(45),
+
+  // Continuous 4-tier workbench progression (see utils/tiers.ts). Each
+  // *_ORDER_BAND is how many workbench order slots that tier spans — the
+  // cumulative order milestones (0/40/45/50/55 in production) are derived
+  // from these, never a second hardcoded set of numbers. Each
+  // *_DEPOSIT_CAP is that tier's own absolute deposit ceiling (cumulative,
+  // not a per-tier delta). Test overrides shrink these for fast fixtures —
+  // see vitest.config.ts.
+  SIMULATION_BRONZE_ORDER_BAND: z.coerce.number().int().positive().default(40),
+  SIMULATION_SILVER_ORDER_BAND: z.coerce.number().int().positive().default(5),
+  SIMULATION_GOLD_ORDER_BAND: z.coerce.number().int().positive().default(5),
+  SIMULATION_PLATINUM_ORDER_BAND: z.coerce.number().int().positive().default(5),
+  SIMULATION_BRONZE_DEPOSIT_CAP: z.coerce.number().positive().default(100),
+  SIMULATION_SILVER_DEPOSIT_CAP: z.coerce.number().positive().default(500),
+  SIMULATION_GOLD_DEPOSIT_CAP: z.coerce.number().positive().default(2000),
+  SIMULATION_PLATINUM_DEPOSIT_CAP: z.coerce.number().positive().default(5000),
 
   // --- Supabase Storage (training task product images) --- backend-only.
   // Optional at the schema level so the app still boots locally / typechecks

@@ -2,10 +2,10 @@ import type { Product } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
-import { SIMULATION } from '../config/simulation';
+import { TIERS, type Tier } from '../utils/tiers';
 import {
   listAllProducts,
-  listWorkbenchProducts,
+  listWorkbenchProductsForTier,
   findProductById,
   findMaxDisplayOrder,
   createProduct,
@@ -13,6 +13,8 @@ import {
   deleteProduct,
 } from '../repositories/product.repository';
 import { uploadProductImage, deleteImage } from '../lib/supabaseStorage';
+
+const TIER_ORDER: Tier[] = ['Bronze', 'Silver', 'Gold', 'Platinum'];
 
 // Decimal fields never leave a service as raw Prisma Decimal objects —
 // JSON.stringify would serialize them as strings, not numbers (see
@@ -26,6 +28,10 @@ export interface AdminProductDto {
   reward: number;
   cost: number;
   price: number;
+  // Null means "Bronze" (see schema.prisma's doc comment on the column) —
+  // returned as the literal resolved tier here so the admin UI never has
+  // to re-implement that default itself.
+  tierEligibility: Tier;
   imageUrl: string | null;
   isActive: boolean;
   createdAt: Date;
@@ -41,6 +47,7 @@ function toAdminProductDto(product: Product): AdminProductDto {
     reward: Number(product.reward),
     cost: Number(product.cost),
     price: Number(product.price),
+    tierEligibility: product.tierEligibility ?? 'Bronze',
     imageUrl: product.imageUrl,
     isActive: product.isActive,
     createdAt: product.createdAt,
@@ -61,19 +68,32 @@ export async function listProductsForAdmin(): Promise<AdminProductDto[]> {
   return products.map(toAdminProductDto);
 }
 
-export interface WorkbenchReadinessDto {
+export interface TierReadinessDto {
+  tier: Tier;
   eligibleCount: number;
   required: number;
   ready: boolean;
 }
 
-// "Eligible" mirrors exactly what the customer workbench itself requires —
-// published/active and priced above zero — see product.repository.ts's
-// listWorkbenchProducts, the same query order.service.ts uses.
+export interface WorkbenchReadinessDto {
+  tiers: TierReadinessDto[];
+  ready: boolean;
+}
+
+// "Eligible" mirrors exactly what the customer workbench itself requires
+// for each tier band — published/active, priced above zero, and tagged for
+// that tier (or untagged, which counts as Bronze) — see
+// product.repository.ts's listWorkbenchProductsForTier, the same query
+// order.service.ts uses. Reported per tier so an admin can see exactly
+// which band still needs stocking as customers approach it.
 export async function getWorkbenchReadinessForAdmin(): Promise<WorkbenchReadinessDto> {
-  const eligible = await listWorkbenchProducts();
-  const required = SIMULATION.WORKBENCH_SET_SIZE;
-  return { eligibleCount: eligible.length, required, ready: eligible.length >= required };
+  const tiers: TierReadinessDto[] = [];
+  for (const tier of TIER_ORDER) {
+    const eligible = await listWorkbenchProductsForTier(tier);
+    const required = TIERS[tier].maxOrders - TIERS[tier].minOrders;
+    tiers.push({ tier, eligibleCount: eligible.length, required, ready: eligible.length >= required });
+  }
+  return { tiers, ready: tiers.every((t) => t.ready) };
 }
 
 export async function getProductForAdmin(id: string): Promise<AdminProductDto> {
@@ -86,6 +106,7 @@ export interface CreateProductInput {
   reward: number;
   cost: number;
   price?: number;
+  tierEligibility?: Tier | null;
   imageUrl?: string | null;
   isActive?: boolean;
   displayOrder?: number;
@@ -110,6 +131,7 @@ export async function createProductForAdmin(input: CreateProductInput): Promise<
       reward: input.reward,
       cost: input.cost,
       price: input.price ?? 0,
+      tierEligibility: input.tierEligibility ?? null,
       imageUrl: input.imageUrl ?? null,
       isActive: input.isActive ?? false,
       displayOrder,
@@ -129,6 +151,7 @@ export interface UpdateProductInput {
   reward?: number;
   cost?: number;
   price?: number;
+  tierEligibility?: Tier | null;
   imageUrl?: string | null;
   isActive?: boolean;
   displayOrder?: number;

@@ -1,10 +1,14 @@
 import type { Tier, TierInfo } from '@/types';
 
+// Mirrors backend/src/utils/tiers.ts's production defaults exactly (0/40/
+// 45/50/55 orders, $0/100/500/2000/5000 deposits) — display-only here, the
+// backend is the sole source of truth for anything that gates real
+// behavior. See that file's TIER_ORDER_BANDS/TIER_DEPOSIT_CAPS comment.
 export const TIERS: Record<Tier, TierInfo> = {
-  Bronze: { name: 'Bronze', minOrders: 0, minDeposits: 0, color: 'text-amber-600' },
-  Silver: { name: 'Silver', minOrders: 50, minDeposits: 500, color: 'text-slate-500' },
-  Gold: { name: 'Gold', minOrders: 200, minDeposits: 2000, color: 'text-amber-600' },
-  Platinum: { name: 'Platinum', minOrders: 500, minDeposits: 5000, color: 'text-cyan-600' },
+  Bronze: { name: 'Bronze', minOrders: 0, maxOrders: 40, minDeposits: 0, maxDeposits: 100, color: 'text-amber-600' },
+  Silver: { name: 'Silver', minOrders: 40, maxOrders: 45, minDeposits: 100, maxDeposits: 500, color: 'text-slate-500' },
+  Gold: { name: 'Gold', minOrders: 45, maxOrders: 50, minDeposits: 500, maxDeposits: 2000, color: 'text-amber-600' },
+  Platinum: { name: 'Platinum', minOrders: 50, maxOrders: 55, minDeposits: 2000, maxDeposits: 5000, color: 'text-cyan-600' },
 };
 
 export const TIER_ORDER: Tier[] = ['Bronze', 'Silver', 'Gold', 'Platinum'];
@@ -26,11 +30,18 @@ export function getNextTier(current: Tier): Tier | null {
   return TIER_ORDER[idx + 1];
 }
 
-export function getTierProgress(completedOrders: number, totalDeposits: number, target: Tier): number {
-  const info = TIERS[target];
-  const orderPct = info.minOrders > 0 ? Math.min(100, (completedOrders / info.minOrders) * 100) : 100;
-  const depositPct = info.minDeposits > 0 ? Math.min(100, (totalDeposits / info.minDeposits) * 100) : 100;
-  return Math.round((orderPct + depositPct) / 2);
+// Progress toward the CURRENT tier's own ceiling — never a per-tier reset
+// to 0, and never toward the next tier's absolute threshold (which is the
+// same number, but framing it as "this tier's own max" is what makes
+// Platinum's own 50→55 / $2000→$5000 bar work with no "next tier" to point
+// at).
+export function getTierProgress(completedOrders: number, totalDeposits: number, tier: Tier): number {
+  const info = TIERS[tier];
+  const orderSpan = info.maxOrders - info.minOrders;
+  const depositSpan = info.maxDeposits - info.minDeposits;
+  const orderPct = orderSpan > 0 ? Math.min(100, ((completedOrders - info.minOrders) / orderSpan) * 100) : 100;
+  const depositPct = depositSpan > 0 ? Math.min(100, ((totalDeposits - info.minDeposits) / depositSpan) * 100) : 100;
+  return Math.round((Math.max(0, orderPct) + Math.max(0, depositPct)) / 2);
 }
 
 // The pay-to-unlock amount shown for a tier — reuses the exact same

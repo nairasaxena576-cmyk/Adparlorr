@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient, Tier } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 
 type Client = PrismaClient | Prisma.TransactionClient;
@@ -17,6 +17,20 @@ export function listActiveProducts() {
 export function listWorkbenchProducts(client: Client = prisma) {
   return client.product.findMany({
     where: { isActive: true, price: { gt: 0 } },
+    orderBy: { displayOrder: 'asc' },
+  });
+}
+
+// The eligible pool for one specific tier's workbench band (see
+// utils/tiers.ts / order.service.ts). Untagged (tierEligibility = null)
+// products count as Bronze so every product created before this field
+// existed keeps working exactly as before.
+export function listWorkbenchProductsForTier(tier: Tier, client: Client = prisma) {
+  return client.product.findMany({
+    where:
+      tier === 'Bronze'
+        ? { isActive: true, price: { gt: 0 }, OR: [{ tierEligibility: null }, { tierEligibility: 'Bronze' }] }
+        : { isActive: true, price: { gt: 0 }, tierEligibility: tier },
     orderBy: { displayOrder: 'asc' },
   });
 }

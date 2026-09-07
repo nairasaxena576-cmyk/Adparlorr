@@ -11,7 +11,7 @@ export function DashboardHome() {
 
   const tier = resolveEffectiveTier(user.completedOrders, user.totalDeposits, user.manualTier);
   const nextTier = getNextTier(tier);
-  const progress = nextTier ? getTierProgress(user.completedOrders, user.totalDeposits, nextTier) : 100;
+  const progress = getTierProgress(user.completedOrders, user.totalDeposits, tier);
 
   const stats = [
     { label: 'Total Orders', value: user.completedOrders, Icon: ShoppingBag, color: 'text-sky-400', bg: 'bg-sky-500/15' },
@@ -103,36 +103,37 @@ export function DashboardHome() {
               <p className="text-sm text-ink-500">Current Tier</p>
               <p className={`text-xl font-bold ${TIERS[tier].color}`}>{tier}</p>
             </div>
-            {nextTier && (
-              <div className="text-right">
-                <p className="text-sm text-ink-500">Next Tier</p>
-                <p className={`text-xl font-bold ${TIERS[nextTier].color}`}>{nextTier}</p>
+            <div className="text-right">
+              <p className="text-sm text-ink-500">Next Tier</p>
+              <p className={`text-xl font-bold ${nextTier ? TIERS[nextTier].color : 'text-ink-400'}`}>
+                {nextTier ?? '—'}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-ink-500">{nextTier ? `Progress to ${nextTier}` : 'Highest tier reached'}</span>
+              <span className="font-semibold text-brand-600">{progress}%</span>
+            </div>
+            <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-pink-100">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-brand-500 to-brand-400 transition-all"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <div className="mt-3 flex flex-col gap-1 text-xs text-ink-400 sm:flex-row sm:gap-6">
+              <span>Orders: {Math.min(user.completedOrders, TIERS[tier].maxOrders)}/{TIERS[tier].maxOrders}</span>
+              <span>
+                Deposits: ${Math.min(user.totalDeposits, TIERS[tier].maxDeposits).toFixed(0)}/${TIERS[tier].maxDeposits}
+              </span>
+            </div>
+            {!nextTier && (
+              <div className="mt-3 flex items-center gap-2 text-sm text-brand-600">
+                <TrendingUp className="h-4 w-4" /> You've reached the highest tier!
               </div>
             )}
           </div>
-
-          {nextTier ? (
-            <div className="mt-4">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-ink-500">Progress to {nextTier}</span>
-                <span className="font-semibold text-brand-600">{progress}%</span>
-              </div>
-              <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-pink-100">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-brand-500 to-brand-400 transition-all"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-              <div className="mt-3 flex flex-col gap-1 text-xs text-ink-400 sm:flex-row sm:gap-6">
-                <span>Orders: {user.completedOrders}/{TIERS[nextTier].minOrders}</span>
-                <span>Deposits: ${user.totalDeposits.toFixed(0)}/${TIERS[nextTier].minDeposits}</span>
-              </div>
-            </div>
-          ) : (
-            <div className="mt-4 flex items-center gap-2 text-sm text-brand-600">
-              <TrendingUp className="h-4 w-4" /> You've reached the highest tier!
-            </div>
-          )}
         </div>
       </div>
 

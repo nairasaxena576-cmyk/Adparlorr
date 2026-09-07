@@ -345,15 +345,24 @@ export interface AdminProduct {
   reward: number;
   cost: number;
   price: number;
+  // Which customer tier's workbench band this product belongs to. Always a
+  // concrete Tier (never null) — untagged products resolve to 'Bronze'.
+  tierEligibility: Tier;
   imageUrl: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface WorkbenchReadiness {
+export interface TierReadiness {
+  tier: Tier;
   eligibleCount: number;
   required: number;
+  ready: boolean;
+}
+
+export interface WorkbenchReadiness {
+  tiers: TierReadiness[];
   ready: boolean;
 }
 
@@ -373,14 +382,24 @@ export interface MergeBundle {
   commission: number;
 }
 
-export type WorkbenchStatus = 'NOT_READY' | 'SHORTFALL' | 'COMPLETED' | 'MERGE' | 'NORMAL';
+export type WorkbenchStatus = 'NOT_READY' | 'TIER_LOCKED' | 'SHORTFALL' | 'COMPLETED' | 'MERGE' | 'NORMAL';
 
 export interface WorkbenchState {
   status: WorkbenchStatus;
-  // total is a fixed business constant (45) — never derived from however
-  // many eligible products exist. eligibleCount is separate, informational.
+  // GLOBAL cumulative progress across the entire continuous order ladder
+  // (0→55 in production) — never a per-tier/per-band reset. total is a
+  // fixed business constant, never derived from however many eligible
+  // products exist.
   progress: { completed: number; total: number };
+  tier: Tier;
+  nextTier: Tier | null;
+  // Eligible-product count and required size for the CURRENT tier's band
+  // specifically — not the grand total. eligibleCount is informational.
   eligibleCount: number;
+  bandRequired: number;
+  // How much more real deposit is needed to reach the next tier's band —
+  // meaningful mainly while status is TIER_LOCKED. Null at Platinum.
+  depositsNeededForNextTier: number | null;
   // Demo/simulation-only — entirely separate from the real Wallet balance
   // (User.balance). See order.service.ts / schema.prisma for the full
   // real-vs-simulated separation.
@@ -407,7 +426,11 @@ export type Tier = 'Bronze' | 'Silver' | 'Gold' | 'Platinum';
 
 export interface TierInfo {
   name: Tier;
+  // Cumulative — never a per-tier delta. min* is this tier's own start,
+  // max* is this tier's own ceiling (mirrors backend/src/utils/tiers.ts).
   minOrders: number;
+  maxOrders: number;
   minDeposits: number;
+  maxDeposits: number;
   color: string;
 }

@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { prisma } from '../src/lib/prisma';
+import { TIERS } from '../src/utils/tiers';
 import { registerAndLogin, createAdminAndLogin, createFixtureWorkbenchSet, completeTrainingTasks } from './helpers';
 
 type Session = Awaited<ReturnType<typeof registerAndLogin>>;
@@ -19,11 +20,12 @@ afterEach(async () => {
   await prisma.product.deleteMany({ where: { category: 'Fixture' } });
 });
 
-// vitest.config.ts overrides SIMULATION_WORKBENCH_SET_SIZE to 5 for tests —
-// exercises the exact same "fixed set size, never derived from catalog"
-// logic as the real default (45) without needing 45 fixture products per
-// scenario.
-const SET_SIZE = 5;
+// vitest.config.ts shrinks the tier order bands for fast fixtures — Bronze
+// stays wide enough (32, see that file's comment) to exercise all 3 fixed
+// Merged Product milestones (orders 10/20/30) inside a single band. Every
+// number below is read from the real tiers util rather than hardcoded, so
+// these tests stay correct no matter how the bands are configured.
+const BRONZE_BAND_SIZE = TIERS.Bronze.maxOrders - TIERS.Bronze.minOrders;
 
 async function enableUsdt(admin: AdminSession, address = 'TAddressExample123') {
   const res = await admin.agent
@@ -38,25 +40,27 @@ async function completeTraining(user: Session) {
   await completeTrainingTasks(user);
 }
 
-describe('workbench — fixed set size (never derived from catalog size)', () => {
-  it('reports the total as the fixed configured set size, not the number of products returned', async () => {
-    await createFixtureWorkbenchSet(SET_SIZE);
+describe('workbench — fixed band size per tier (never derived from catalog size)', () => {
+  it('reports the total as the sum of every tier band, not the number of products returned', async () => {
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE);
     const { agent } = await registerAndLogin();
 
     const res = await agent.get('/api/orders/workbench');
-    expect(res.body.data.workbench.progress.total).toBe(SET_SIZE);
+    expect(res.body.data.workbench.progress.total).toBe(TIERS.Platinum.maxOrders);
     expect(res.body.data.workbench.status).not.toBe('NOT_READY');
+    expect(res.body.data.workbench.tier).toBe('Bronze');
   });
 
-  it('never falsely reports a smaller "eligible == total" match when fewer than the required count exist', async () => {
-    // 3 eligible products, but the set size requires 5.
+  it('never falsely reports a smaller "eligible == required" match when fewer than the band needs exist', async () => {
+    // 3 eligible Bronze products, but the Bronze band requires BRONZE_BAND_SIZE.
     await createFixtureWorkbenchSet(3);
     const { agent } = await registerAndLogin();
 
     const res = await agent.get('/api/orders/workbench');
     expect(res.body.data.workbench.status).toBe('NOT_READY');
     expect(res.body.data.workbench.eligibleCount).toBe(3);
-    expect(res.body.data.workbench.progress).toEqual({ completed: 0, total: SET_SIZE });
+    expect(res.body.data.workbench.bandRequired).toBe(BRONZE_BAND_SIZE);
+    expect(res.body.data.workbench.progress).toEqual({ completed: 0, total: TIERS.Platinum.maxOrders });
     expect(res.body.data.workbench.currentProduct).toBeNull();
   });
 
@@ -73,33 +77,46 @@ describe('workbench — fixed set size (never derived from catalog size)', () =>
     expect(res.status).toBe(409);
   });
 
-  it('tracks completed/total correctly through a full set, ending at exactly N/N', async () => {
-    await createFixtureWorkbenchSet(SET_SIZE);
+  it('tracks global completed/total correctly through a full Bronze band, ending at BRONZE_BAND_SIZE/grandTotal', async () => {
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE);
     const { agent, csrfToken, body } = await registerAndLogin();
-    await prisma.user.update({ where: { id: body.data.user.id }, data: { workbenchBalance: 1000 } });
+    // High enough to absorb the 3 merge events naturally occurring inside
+    // the Bronze band (orders 10/20/30) without ever going negative — this
+    // test is only about completed/total tracking, not shortfall behavior.
+    await prisma.user.update({ where: { id: body.data.user.id }, data: { workbenchBalance: 100_000 } });
 
-    for (let i = 0; i < SET_SIZE - 1; i += 1) {
+    let completed = 0;
+    while (completed < BRONZE_BAND_SIZE - 1) {
       const state = await agent.get('/api/orders/workbench');
-      const current = state.body.data.workbench.currentProduct;
-      await agent.post('/api/orders').set('X-CSRF-Token', csrfToken).send({ productId: current.id });
+      const wb = state.body.data.workbench;
+      const productId = wb.status === 'MERGE' ? wb.mergeBundle.products[0].id : wb.currentProduct.id;
+      const res = await agent.post('/api/orders').set('X-CSRF-Token', csrfToken).send({ productId });
+      completed += res.body.data.submittedCount;
     }
 
     const almostDone = await agent.get('/api/orders/workbench');
-    expect(almostDone.body.data.workbench.progress).toEqual({ completed: SET_SIZE - 1, total: SET_SIZE });
+    expect(almostDone.body.data.workbench.progress).toEqual({
+      completed: BRONZE_BAND_SIZE - 1,
+      total: TIERS.Platinum.maxOrders,
+    });
     expect(almostDone.body.data.workbench.status).toBe('NORMAL');
 
     const last = almostDone.body.data.workbench.currentProduct;
     await agent.post('/api/orders').set('X-CSRF-Token', csrfToken).send({ productId: last.id });
 
+    // Bronze's own band is now exhausted. Deposits ($0) haven't reached
+    // Silver's requirement, so the customer is TIER_LOCKED, not falsely
+    // reported as fully COMPLETED.
     const finished = await agent.get('/api/orders/workbench');
-    expect(finished.body.data.workbench.progress).toEqual({ completed: SET_SIZE, total: SET_SIZE });
-    expect(finished.body.data.workbench.status).toBe('COMPLETED');
+    expect(finished.body.data.workbench.progress.completed).toBe(BRONZE_BAND_SIZE);
+    expect(finished.body.data.workbench.status).toBe('TIER_LOCKED');
+    expect(finished.body.data.workbench.depositsNeededForNextTier).toBeCloseTo(TIERS.Silver.minDeposits, 5);
   });
 });
 
 describe('workbench — commission (server-side, simulated)', () => {
   it('computes normal commission as exactly 1% of the full product price', async () => {
-    await createFixtureWorkbenchSet(SET_SIZE, 100);
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 100);
     const { agent, csrfToken } = await registerAndLogin();
 
     const state = await agent.get('/api/orders/workbench');
@@ -113,11 +130,11 @@ describe('workbench — commission (server-side, simulated)', () => {
   });
 
   it('computes merged commission as exactly 10% of the combined bundled value', async () => {
-    await createFixtureWorkbenchSet(SET_SIZE, 100);
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 100);
     const { agent, csrfToken, body } = await registerAndLogin();
     await prisma.user.update({
       where: { id: body.data.user.id },
-      data: { completedOrders: 14, workbenchBalance: 1000 },
+      data: { completedOrders: 9, workbenchBalance: 1000 }, // 1 short of the order-10 milestone
     });
 
     const state = await agent.get('/api/orders/workbench');
@@ -133,7 +150,7 @@ describe('workbench — commission (server-side, simulated)', () => {
   });
 
   it('never trusts a client-supplied commission amount', async () => {
-    await createFixtureWorkbenchSet(SET_SIZE, 50);
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 50);
     const { agent, csrfToken } = await registerAndLogin();
     const state = await agent.get('/api/orders/workbench');
     const product = state.body.data.workbench.currentProduct;
@@ -147,13 +164,234 @@ describe('workbench — commission (server-side, simulated)', () => {
   });
 });
 
+describe('workbench — Merged Product: exactly 3, fixed at orders 10/20/30', () => {
+  it('fires exactly at order 10, 20, and 30 — never before, never after 30, never a 4th time', async () => {
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 100);
+    const { agent, csrfToken, body } = await registerAndLogin();
+    await prisma.user.update({ where: { id: body.data.user.id }, data: { workbenchBalance: 100_000 } });
+
+    const mergeOrdersSeen: number[] = [];
+    let i = 0;
+    while (mergeOrdersSeen.length < 3) {
+      const state = await agent.get('/api/orders/workbench');
+      const wb = state.body.data.workbench;
+      expect(wb.status).not.toBe('COMPLETED');
+      expect(wb.status).not.toBe('TIER_LOCKED');
+
+      const isMerge = wb.status === 'MERGE';
+      const productId = isMerge ? wb.mergeBundle.products[0].id : wb.currentProduct.id;
+      const before = i;
+      const res = await agent.post('/api/orders').set('X-CSRF-Token', csrfToken).send({ productId });
+      expect(res.status).toBe(201);
+      if (isMerge) {
+        mergeOrdersSeen.push(before + 1); // the order count the merge landed on
+      }
+      i += res.body.data.submittedCount;
+    }
+
+    expect(mergeOrdersSeen).toEqual([10, 20, 30]);
+
+    const user = await prisma.user.findUnique({ where: { id: body.data.user.id } });
+    expect(user!.mergedMilestonesReached).toBe(3);
+
+    // Every remaining Bronze slot (orders 31 through BRONZE_BAND_SIZE) must
+    // contain only normal products — no 4th merge, ever.
+    for (; i < BRONZE_BAND_SIZE; ) {
+      const state = await agent.get('/api/orders/workbench');
+      expect(state.body.data.workbench.status).toBe('NORMAL');
+      const res = await agent
+        .post('/api/orders')
+        .set('X-CSRF-Token', csrfToken)
+        .send({ productId: state.body.data.workbench.currentProduct.id });
+      expect(res.body.data.status).toBe('NORMAL');
+      i += res.body.data.submittedCount;
+    }
+  });
+
+  it('cannot be forged by the client — merge status is only ever server-decided', async () => {
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 100);
+    const { agent, csrfToken } = await registerAndLogin();
+    const state = await agent.get('/api/orders/workbench');
+    expect(state.body.data.workbench.status).toBe('NORMAL');
+
+    // Nothing in the submit endpoint accepts a client-supplied merge flag —
+    // sending one has no effect and the normal 1% commission still applies.
+    const res = await agent
+      .post('/api/orders')
+      .set('X-CSRF-Token', csrfToken)
+      .send({ productId: state.body.data.workbench.currentProduct.id, isMergedOrder: true, status: 'MERGE' });
+    expect(res.status).toBe(201);
+    expect(res.body.data.status).toBe('NORMAL');
+    expect(res.body.data.commissionEarned).toBeCloseTo(1.0, 5);
+  });
+});
+
+describe('workbench — product value increases by tier', () => {
+  it('a Bronze customer only ever receives Bronze-eligible products', async () => {
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 10, 'Bronze');
+    await createFixtureWorkbenchSet(TIERS.Silver.maxOrders - TIERS.Silver.minOrders, 999, 'Silver');
+    const { agent } = await registerAndLogin();
+
+    const state = await agent.get('/api/orders/workbench');
+    expect(state.body.data.workbench.tier).toBe('Bronze');
+    expect(state.body.data.workbench.currentProduct.price).toBe(10);
+  });
+
+  it('a Silver-tier customer draws from the Silver pool, not Bronze, once their band is reached', async () => {
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 10, 'Bronze');
+    const silverBandSize = TIERS.Silver.maxOrders - TIERS.Silver.minOrders;
+    await createFixtureWorkbenchSet(silverBandSize, 999, 'Silver');
+    const { agent, body } = await registerAndLogin();
+    await prisma.user.update({
+      where: { id: body.data.user.id },
+      // completedOrders is past all 3 fixed merge milestones (10/20/30) —
+      // mergedMilestonesReached must reflect that, or the workbench thinks
+      // milestone #1 is still due and wrongly reports MERGE instead of
+      // NORMAL. A real user reaching this many orders would necessarily
+      // have already triggered all 3 along the way.
+      data: { completedOrders: TIERS.Silver.minOrders, totalDeposits: TIERS.Silver.minDeposits, mergedMilestonesReached: 3 },
+    });
+
+    const state = await agent.get('/api/orders/workbench');
+    expect(state.body.data.workbench.tier).toBe('Silver');
+    expect(state.body.data.workbench.currentProduct.price).toBe(999);
+  });
+
+  it('a Gold-tier customer draws from the Gold pool, a higher value range than Silver/Bronze', async () => {
+    await createFixtureWorkbenchSet(TIERS.Gold.maxOrders - TIERS.Gold.minOrders, 5000, 'Gold');
+    const { agent, body } = await registerAndLogin();
+    await prisma.user.update({
+      where: { id: body.data.user.id },
+      data: { completedOrders: TIERS.Gold.minOrders, totalDeposits: TIERS.Gold.minDeposits, mergedMilestonesReached: 3 },
+    });
+
+    const state = await agent.get('/api/orders/workbench');
+    expect(state.body.data.workbench.tier).toBe('Gold');
+    expect(state.body.data.workbench.currentProduct.price).toBe(5000);
+  });
+
+  it('a Platinum-tier customer draws from the Platinum pool, the highest value range', async () => {
+    await createFixtureWorkbenchSet(TIERS.Platinum.maxOrders - TIERS.Platinum.minOrders, 10_000, 'Platinum');
+    const { agent, body } = await registerAndLogin();
+    await prisma.user.update({
+      where: { id: body.data.user.id },
+      data: { completedOrders: TIERS.Platinum.minOrders, totalDeposits: TIERS.Platinum.minDeposits, mergedMilestonesReached: 3 },
+    });
+
+    const state = await agent.get('/api/orders/workbench');
+    expect(state.body.data.workbench.tier).toBe('Platinum');
+    expect(state.body.data.workbench.currentProduct.price).toBe(10_000);
+  });
+
+  it('reports NOT_READY for a tier whose own band lacks enough eligible products, independent of other bands', async () => {
+    // Plenty of Bronze products, but zero tagged Silver — a customer who
+    // has already reached Silver's order/deposit thresholds must not be
+    // silently handed Bronze products instead.
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 10, 'Bronze');
+    const { agent, body } = await registerAndLogin();
+    await prisma.user.update({
+      where: { id: body.data.user.id },
+      data: { completedOrders: TIERS.Silver.minOrders, totalDeposits: TIERS.Silver.minDeposits },
+    });
+
+    const state = await agent.get('/api/orders/workbench');
+    expect(state.body.data.workbench.tier).toBe('Silver');
+    expect(state.body.data.workbench.status).toBe('NOT_READY');
+    expect(state.body.data.workbench.currentProduct).toBeNull();
+  });
+
+  it('cannot be spoofed from the client — submitting a wrong-tier productId is rejected', async () => {
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 10, 'Bronze');
+    const [silverProduct] = await createFixtureWorkbenchSet(2, 999, 'Silver');
+    const { agent, csrfToken } = await registerAndLogin(); // Bronze tier
+
+    const res = await agent
+      .post('/api/orders')
+      .set('X-CSRF-Token', csrfToken)
+      .send({ productId: silverProduct.id });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('workbench — continuous tier progression (never resets)', () => {
+  it('starts every fresh customer at Bronze, 0 orders, $0 deposits', async () => {
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE);
+    const { agent } = await registerAndLogin();
+    const state = await agent.get('/api/orders/workbench');
+    expect(state.body.data.workbench.tier).toBe('Bronze');
+    expect(state.body.data.workbench.nextTier).toBe('Silver');
+    expect(state.body.data.workbench.progress.completed).toBe(0);
+  });
+
+  it('advances tier exactly at the band boundary, using the SAME cumulative counter — no per-tier reset', async () => {
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE);
+    const { agent, body } = await registerAndLogin();
+
+    // One order short of Silver's boundary — still Bronze. Also past all 3
+    // fixed merge milestones (10/20/30) — see the tier-by-tier fixtures
+    // above for why mergedMilestonesReached must be kept consistent.
+    await prisma.user.update({
+      where: { id: body.data.user.id },
+      data: {
+        completedOrders: TIERS.Silver.minOrders - 1,
+        totalDeposits: TIERS.Silver.minDeposits,
+        mergedMilestonesReached: 3,
+      },
+    });
+    const before = await agent.get('/api/orders/workbench');
+    expect(before.body.data.workbench.tier).toBe('Bronze');
+    expect(before.body.data.workbench.progress.completed).toBe(TIERS.Silver.minOrders - 1);
+
+    // Exactly at the boundary (same global counter, not reset) — now Silver.
+    await prisma.user.update({
+      where: { id: body.data.user.id },
+      data: { completedOrders: TIERS.Silver.minOrders, mergedMilestonesReached: 3 },
+    });
+    const after = await agent.get('/api/orders/workbench');
+    expect(after.body.data.workbench.tier).toBe('Silver');
+    expect(after.body.data.workbench.progress.completed).toBe(TIERS.Silver.minOrders);
+  });
+
+  it('reaches Platinum and reports the final grand-total state once every band is complete', async () => {
+    const { agent, body } = await registerAndLogin();
+    await prisma.user.update({
+      where: { id: body.data.user.id },
+      data: {
+        completedOrders: TIERS.Platinum.maxOrders,
+        totalDeposits: TIERS.Platinum.maxDeposits,
+        mergedMilestonesReached: 3,
+      },
+    });
+    const state = await agent.get('/api/orders/workbench');
+    expect(state.body.data.workbench.tier).toBe('Platinum');
+    expect(state.body.data.workbench.nextTier).toBeNull();
+    expect(state.body.data.workbench.progress).toEqual({
+      completed: TIERS.Platinum.maxOrders,
+      total: TIERS.Platinum.maxOrders,
+    });
+  });
+
+  it('cannot be spoofed — a client-supplied tier/order count on the request body has no effect', async () => {
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 10, 'Bronze');
+    const { agent, csrfToken } = await registerAndLogin();
+    const state = await agent.get('/api/orders/workbench');
+
+    const res = await agent
+      .post('/api/orders')
+      .set('X-CSRF-Token', csrfToken)
+      .send({ productId: state.body.data.workbench.currentProduct.id, tier: 'Platinum', completedOrders: 9999 });
+    expect(res.status).toBe(201);
+    expect(res.body.data.user.completedOrders).toBe(1);
+  });
+});
+
 describe('workbench — simulated negative balance (demo-only, never real crypto)', () => {
   it('a merged product can drive the demo working balance negative, producing an exact shortfall', async () => {
-    await createFixtureWorkbenchSet(SET_SIZE, 100);
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 100);
     const { agent, csrfToken, body } = await registerAndLogin();
     await prisma.user.update({
       where: { id: body.data.user.id },
-      data: { completedOrders: 14, workbenchBalance: 40 },
+      data: { completedOrders: 9, workbenchBalance: 40 },
     });
 
     const state = await agent.get('/api/orders/workbench');
@@ -170,7 +408,7 @@ describe('workbench — simulated negative balance (demo-only, never real crypto
   });
 
   it('a simulated shortfall never creates a real Deposit or Transaction record', async () => {
-    await createFixtureWorkbenchSet(SET_SIZE, 100);
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 100);
     const { agent, csrfToken, body } = await registerAndLogin();
 
     const state = await agent.get('/api/orders/workbench');
@@ -185,7 +423,7 @@ describe('workbench — simulated negative balance (demo-only, never real crypto
 
   it('blocks the next submission while the demo balance is negative', async () => {
     // Create products we will use for submission
-    const products = await createFixtureWorkbenchSet(SET_SIZE + 1, 100);
+    const products = await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 100);
     const { agent, csrfToken } = await registerAndLogin();
 
     // Submit first product - this will make the workbench balance negative
@@ -204,7 +442,7 @@ describe('workbench — simulated negative balance (demo-only, never real crypto
 
 describe('workbench — demo-credit shortfall resolution (simulation only)', () => {
   it('resolves a simulated shortfall instantly with demo credits, touching only workbenchBalance', async () => {
-    await createFixtureWorkbenchSet(SET_SIZE, 100);
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 100);
     const { agent, csrfToken, body } = await registerAndLogin();
 
     const state = await agent.get('/api/orders/workbench');
@@ -237,7 +475,7 @@ describe('workbench — demo-credit shortfall resolution (simulation only)', () 
   });
 
   it('a customer cannot fake the demo balance directly — only the resolve endpoint can clear a shortfall', async () => {
-    await createFixtureWorkbenchSet(SET_SIZE, 100);
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 100);
     const { agent, csrfToken } = await registerAndLogin();
     const state = await agent.get('/api/orders/workbench');
     await agent
@@ -282,7 +520,7 @@ describe('workbench — real deposit system stays fully separate', () => {
   });
 
   it('a simulated workbench shortfall does not block or alter the real deposit flow, and vice versa', async () => {
-    await createFixtureWorkbenchSet(SET_SIZE, 100);
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 100);
     const admin = await createAdminAndLogin();
     await enableUsdt(admin);
     const user = await registerAndLogin();
@@ -332,7 +570,7 @@ describe('workbench — real deposit system stays fully separate', () => {
 
 describe('workbench — anti-bypass', () => {
   it('cannot fake progress: submitting an id other than the server-assigned current product is rejected', async () => {
-    const products = await createFixtureWorkbenchSet(SET_SIZE, 20);
+    const products = await createFixtureWorkbenchSet(BRONZE_BAND_SIZE, 20);
     const { agent, csrfToken } = await registerAndLogin();
     const state = await agent.get('/api/orders/workbench');
     const current = state.body.data.workbench.currentProduct;
@@ -346,7 +584,7 @@ describe('workbench — anti-bypass', () => {
   });
 
   it('cannot mark the set complete without real backend submissions', async () => {
-    await createFixtureWorkbenchSet(SET_SIZE);
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE);
     const { agent } = await registerAndLogin();
     const res = await agent.get('/api/orders/workbench');
     expect(res.body.data.workbench.status).not.toBe('COMPLETED');
@@ -367,33 +605,57 @@ describe('workbench — supporting systems remain intact', () => {
 
   it('existing admin product controls (create/price/publish) remain intact and reflect in the workbench', async () => {
     const admin = await createAdminAndLogin();
-    await createFixtureWorkbenchSet(SET_SIZE - 1, 100); // one short of ready
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE - 1, 100); // one short of ready
     const { agent } = await registerAndLogin();
 
     const before = await agent.get('/api/orders/workbench');
     expect(before.body.data.workbench.status).toBe('NOT_READY');
-    expect(before.body.data.workbench.eligibleCount).toBe(SET_SIZE - 1);
+    expect(before.body.data.workbench.eligibleCount).toBe(BRONZE_BAND_SIZE - 1);
 
     const create = await admin.agent
       .post('/api/admin/products')
       .set('X-CSRF-Token', admin.csrfToken)
       .send({ name: 'Fixture Product Extra', category: 'Fixture', reward: 1, cost: 0.3, price: 100, isActive: true });
     expect(create.status).toBe(201);
+    expect(create.body.data.product.tierEligibility).toBe('Bronze');
 
     const after = await agent.get('/api/orders/workbench');
-    expect(after.body.data.workbench.eligibleCount).toBe(SET_SIZE);
+    expect(after.body.data.workbench.eligibleCount).toBe(BRONZE_BAND_SIZE);
     expect(after.body.data.workbench.status).not.toBe('NOT_READY');
   });
 
-  it("admin sees workbench readiness on the products list", async () => {
+  it('admin sees per-tier workbench readiness on the products list', async () => {
     const admin = await createAdminAndLogin();
-    await createFixtureWorkbenchSet(SET_SIZE - 2, 100);
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE - 2, 100);
 
     const res = await admin.agent.get('/api/admin/products');
-    expect(res.body.data.workbenchReadiness).toEqual({
-      eligibleCount: SET_SIZE - 2,
-      required: SET_SIZE,
-      ready: false,
-    });
+    const bronzeRow = res.body.data.workbenchReadiness.tiers.find((t: { tier: string }) => t.tier === 'Bronze');
+    expect(bronzeRow).toEqual({ tier: 'Bronze', eligibleCount: BRONZE_BAND_SIZE - 2, required: BRONZE_BAND_SIZE, ready: false });
+    expect(res.body.data.workbenchReadiness.ready).toBe(false);
+  });
+
+  it('admin can set a product\'s tier eligibility explicitly', async () => {
+    const admin = await createAdminAndLogin();
+    const create = await admin.agent
+      .post('/api/admin/products')
+      .set('X-CSRF-Token', admin.csrfToken)
+      .send({
+        name: 'Gold Fixture',
+        category: 'Fixture',
+        reward: 1,
+        cost: 0.3,
+        price: 500,
+        tierEligibility: 'Gold',
+        isActive: true,
+      });
+    expect(create.status).toBe(201);
+    expect(create.body.data.product.tierEligibility).toBe('Gold');
+
+    const update = await admin.agent
+      .put(`/api/admin/products/${create.body.data.product.id}`)
+      .set('X-CSRF-Token', admin.csrfToken)
+      .send({ tierEligibility: 'Platinum' });
+    expect(update.status).toBe(200);
+    expect(update.body.data.product.tierEligibility).toBe('Platinum');
   });
 });

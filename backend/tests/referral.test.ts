@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { registerAndLogin, createFixtureProduct, createFixtureWorkbenchSet } from './helpers';
+import { TIERS } from '../src/utils/tiers';
+
+// Bronze band width — the workbench only reports NORMAL/ready once at
+// least this many Bronze-eligible products exist (order.service.ts's
+// loadWorkbenchSet). Previously a flat SIMULATION_WORKBENCH_SET_SIZE=5.
+const BRONZE_BAND_SIZE = TIERS.Bronze.maxOrders - TIERS.Bronze.minOrders;
 
 describe('referrals', () => {
   it('links a new user to the referrer identified by the entered code', async () => {
@@ -29,10 +35,15 @@ describe('referrals', () => {
     const referrer = await registerAndLogin();
     const referred = await registerAndLogin({ referralCode: referrer.body.data.user.referralCode });
 
-    // Create enough products to make workbench ready (test override is 5)
-    const products = await createFixtureWorkbenchSet(5);
-    const product = products[0];
-    await referred.agent.post('/api/orders').set('X-CSRF-Token', referred.csrfToken).send({ productId: product.id });
+    // Create enough Bronze-eligible products to make the workbench ready.
+    await createFixtureWorkbenchSet(BRONZE_BAND_SIZE);
+    const workbenchRes = await referred.agent.get('/api/orders/workbench');
+    const currentProduct = workbenchRes.body.data.workbench.currentProduct;
+    const submitRes = await referred.agent
+      .post('/api/orders')
+      .set('X-CSRF-Token', referred.csrfToken)
+      .send({ productId: currentProduct.id });
+    expect(submitRes.status).toBe(201);
 
     const res = await referrer.agent.get('/api/referrals');
     expect(res.body.data.referrals[0].status).toBe('ACTIVE');

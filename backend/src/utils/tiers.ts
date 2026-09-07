@@ -1,3 +1,5 @@
+import { SIMULATION } from '../config/simulation';
+
 // Server-side port of the EXACT thresholds in src/utils/tiers.ts (frontend).
 // The frontend tier calculation is display-only; anything that gates real
 // behavior (e.g. referrer-tier verification for training access — see
@@ -6,18 +8,37 @@
 export type Tier = 'Bronze' | 'Silver' | 'Gold' | 'Platinum';
 
 interface TierThreshold {
+  // Cumulative — never a per-tier delta. minOrders/minDeposits are this
+  // tier's own starting point; maxOrders/maxDeposits are this tier's own
+  // ceiling (identical to the next tier's min, except Platinum, whose max
+  // is a real, final ceiling used for its own completable progress bar).
   minOrders: number;
+  maxOrders: number;
   minDeposits: number;
+  maxDeposits: number;
 }
 
-const TIERS: Record<Tier, TierThreshold> = {
-  Bronze: { minOrders: 0, minDeposits: 0 },
-  Silver: { minOrders: 50, minDeposits: 500 },
-  Gold: { minOrders: 200, minDeposits: 2000 },
-  Platinum: { minOrders: 500, minDeposits: 5000 },
-};
-
 const TIER_ORDER: Tier[] = ['Bronze', 'Silver', 'Gold', 'Platinum'];
+
+// Builds the continuous 4-tier ladder from the configured band widths/caps
+// (SIMULATION.TIER_ORDER_BANDS / TIER_DEPOSIT_CAPS) — one source of numbers,
+// never duplicated. Production defaults yield exactly 0→40→45→50→55 orders
+// and $0→100→500→2000→5000 deposits; tests shrink the bands via env.
+function buildTiers(): Record<Tier, TierThreshold> {
+  const result = {} as Record<Tier, TierThreshold>;
+  let orderCursor = 0;
+  let depositCursor = 0;
+  for (const t of TIER_ORDER) {
+    const minOrders = orderCursor;
+    const minDeposits = depositCursor;
+    orderCursor += SIMULATION.TIER_ORDER_BANDS[t];
+    depositCursor = SIMULATION.TIER_DEPOSIT_CAPS[t];
+    result[t] = { minOrders, maxOrders: orderCursor, minDeposits, maxDeposits: depositCursor };
+  }
+  return result;
+}
+
+export const TIERS: Record<Tier, TierThreshold> = buildTiers();
 
 export function getCurrentTier(completedOrders: number, totalDeposits: number): Tier {
   let tier: Tier = 'Bronze';
