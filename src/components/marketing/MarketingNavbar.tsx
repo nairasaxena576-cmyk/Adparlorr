@@ -33,6 +33,14 @@ export function MarketingNavbar() {
               {link.label}
             </a>
           ))}
+          {/* Real route, not a hash anchor — the one customer-facing Support
+              entry. /dashboard/support is itself the existing authenticated
+              Support Chat route; DashboardLayout already redirects an
+              unauthenticated visitor to /login, so no extra auth check is
+              needed here. */}
+          <Link to="/dashboard/support" className="text-sm font-medium text-slate-600 transition hover:text-slate-900">
+            Support
+          </Link>
         </nav>
 
         <div className="hidden items-center gap-5 lg:flex">
@@ -70,6 +78,13 @@ export function MarketingNavbar() {
                 {link.label}
               </a>
             ))}
+            <Link
+              to="/dashboard/support"
+              onClick={() => setOpen(false)}
+              className="rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Support
+            </Link>
           </nav>
           <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4">
             <Link

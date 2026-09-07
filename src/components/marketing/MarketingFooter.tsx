@@ -109,11 +109,6 @@ export function MarketingFooter() {
                   {CONTACT_EMAIL}
                 </a>
               </li>
-              <li>
-                <Link to="/login" className="hover:text-pink-600">
-                  Support (sign in)
-                </Link>
-              </li>
             </ul>
           </div>
         </div>
