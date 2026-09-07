@@ -1,5 +1,6 @@
-import { Copy, Check, Users, Gift, TrendingUp } from 'lucide-react';
+import { Copy, Check, Users, Gift, TrendingUp, Clock, ArrowRight } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useStore } from '@/store/useStore';
 import { useToast } from '@/components/Toast';
 
@@ -7,11 +8,14 @@ export function Referral() {
   const user = useStore((s) => s.getCurrentUser())!;
   const referralsData = useStore((s) => s.referralsData);
   const fetchReferrals = useStore((s) => s.fetchReferrals);
+  const trainingFundingRequests = useStore((s) => s.trainingFundingRequests);
+  const fetchTrainingFundingRequests = useStore((s) => s.fetchTrainingFundingRequests);
   const showToast = useToast();
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     fetchReferrals();
+    fetchTrainingFundingRequests();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -53,6 +57,61 @@ export function Referral() {
           </button>
         </div>
       </div>
+
+      {/* Training funding requests — people who used my code and need me to fund their training */}
+      {trainingFundingRequests.length > 0 && (
+        <div className="card-c">
+          <h3 className="text-lg font-bold text-ink-900">Training Funding</h3>
+          <p className="mt-1 text-sm text-ink-500">
+            Customers who used your referral code for training need you to provide their required funding.
+          </p>
+          <div className="mt-4 space-y-3">
+            {trainingFundingRequests.map((req) => {
+              const pendingReview = req.depositStatus === 'PENDING';
+              const content = (
+                <>
+                  <div>
+                    <p className="text-sm font-semibold text-ink-900">
+                      Pending Training Funding: ${req.amountRequired.toFixed(2)}
+                    </p>
+                    <p className="text-xs text-ink-500">Customer: {req.customerName}</p>
+                  </div>
+                  {pendingReview ? (
+                    <span className="flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-700">
+                      <Clock className="h-3.5 w-3.5" /> Pending Admin Review
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-sm font-semibold text-brand-600">
+                      {req.depositStatus === 'REJECTED' ? 'Resubmit' : 'Fund Now'} <ArrowRight className="h-4 w-4" />
+                    </span>
+                  )}
+                </>
+              );
+
+              if (pendingReview) {
+                return (
+                  <div
+                    key={req.referralId}
+                    className="flex items-center justify-between rounded-lg bg-pink-50 px-4 py-3"
+                  >
+                    {content}
+                  </div>
+                );
+              }
+
+              return (
+                <Link
+                  key={req.referralId}
+                  to={`/dashboard/wallet?trainingFundingReferralId=${req.referralId}&amount=${req.amountRequired}&customerName=${encodeURIComponent(req.customerName)}`}
+                  className="flex items-center justify-between rounded-lg bg-pink-50 px-4 py-3 transition hover:bg-pink-100"
+                >
+                  {content}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid gap-4 sm:grid-cols-3">

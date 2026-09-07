@@ -20,8 +20,12 @@ export const getCryptoAssets = asyncHandler(async (_req: Request, res: Response)
 });
 
 export const postDeposit = asyncHandler(async (req: Request, res: Response) => {
-  const { assetCode, amount } = req.body as { assetCode: CryptoAssetCode; amount: number };
-  const result = await createDepositRequest(req.user!.id, { assetCode, amount });
+  const { assetCode, amount, trainingFundingReferralId } = req.body as {
+    assetCode: CryptoAssetCode;
+    amount: number;
+    trainingFundingReferralId?: string;
+  };
+  const result = await createDepositRequest(req.user!.id, { assetCode, amount, trainingFundingReferralId });
   ok(res, result, 201, simulationMeta);
 });
 

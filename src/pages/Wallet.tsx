@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Wallet,
   ArrowDownToLine,
@@ -26,6 +26,15 @@ export function WalletPage() {
 
   const trainingCompleted = Boolean(user.trainingCompletedAt);
 
+  // Deep link from Referral.tsx's "Training Funding" card — funding someone
+  // else's training bypasses the "you must complete your own training
+  // first" deposit gate below (see deposit.service.ts's createDepositRequest).
+  const [searchParams] = useSearchParams();
+  const trainingFundingReferralId = searchParams.get('trainingFundingReferralId');
+  const trainingFundingAmount = searchParams.get('amount');
+  const trainingFundingCustomerName = searchParams.get('customerName') || 'this customer';
+  const isTrainingFunding = Boolean(trainingFundingReferralId && trainingFundingAmount);
+
   const [showDeposit, setShowDeposit] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<CryptoAssetCode | null>(null);
@@ -37,15 +46,24 @@ export function WalletPage() {
 
   useEffect(() => {
     fetchTransactions();
-    if (trainingCompleted) fetchCryptoAssets();
+    if (trainingCompleted || isTrainingFunding) fetchCryptoAssets();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trainingCompleted]);
+  }, [trainingCompleted, isTrainingFunding]);
 
   const openDeposit = () => {
     setSelectedAsset(cryptoAssets[0]?.code ?? null);
-    setDepositAmount('');
+    setDepositAmount(isTrainingFunding ? trainingFundingAmount ?? '' : '');
     setShowDeposit(true);
   };
+
+  // Land the referrer directly in the deposit flow, prefilled — they only
+  // need to pick an asset and confirm.
+  useEffect(() => {
+    if (isTrainingFunding && cryptoAssets.length > 0 && !showDeposit) {
+      openDeposit();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTrainingFunding, cryptoAssets]);
 
   const activeAsset = cryptoAssets.find((a) => a.code === selectedAsset) ?? null;
 
@@ -60,13 +78,18 @@ export function WalletPage() {
       return;
     }
     setDepositing(true);
-    const result = await deposit(activeAsset.code, amt);
+    const result = await deposit(activeAsset.code, amt, trainingFundingReferralId ?? undefined);
     setDepositing(false);
     if (!result.ok) {
       showToast(result.error || 'Deposit failed.', 'error');
       return;
     }
-    showToast(`Deposit request of $${amt.toFixed(2)} submitted for review.`, 'success');
+    showToast(
+      isTrainingFunding
+        ? `Training funding deposit of $${amt.toFixed(2)} submitted for admin review.`
+        : `Deposit request of $${amt.toFixed(2)} submitted for review.`,
+      'success'
+    );
     setDepositAmount('');
     setShowDeposit(false);
   };
@@ -106,9 +129,9 @@ export function WalletPage() {
           </div>
         </div>
         <div className="mt-5 flex gap-3">
-          {trainingCompleted ? (
+          {trainingCompleted || isTrainingFunding ? (
             <button onClick={openDeposit} className="btn-brand flex-1">
-              <ArrowDownToLine className="h-4 w-4" /> Deposit
+              <ArrowDownToLine className="h-4 w-4" /> {isTrainingFunding ? 'Fund Training' : 'Deposit'}
             </button>
           ) : (
             <button disabled className="btn-ghost-c flex-1 cursor-not-allowed opacity-60">
@@ -122,7 +145,7 @@ export function WalletPage() {
       </div>
 
       {/* Training-gate notice */}
-      {!trainingCompleted && (
+      {!trainingCompleted && !isTrainingFunding && (
         <div className="card-c border-amber-300 bg-amber-50">
           <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
             <div className="flex items-start gap-3">
@@ -183,7 +206,14 @@ export function WalletPage() {
             <button onClick={() => setShowDeposit(false)} className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-lg text-ink-300 hover:bg-ink-800">
               <X className="h-5 w-5" />
             </button>
-            <h3 className="text-xl font-bold text-white">Deposit Funds</h3>
+            <h3 className="text-xl font-bold text-white">{isTrainingFunding ? 'Training Funding' : 'Deposit Funds'}</h3>
+
+            {isTrainingFunding && (
+              <div className="mt-3 rounded-lg border border-brand-500/40 bg-brand-500/10 p-3">
+                <p className="text-lg font-bold text-brand-300">${parseFloat(trainingFundingAmount || '0').toFixed(2)}</p>
+                <p className="mt-0.5 text-xs text-ink-300">Purpose: Training funding for {trainingFundingCustomerName}</p>
+              </div>
+            )}
 
             {cryptoAssets.length === 0 ? (
               <p className="mt-4 text-sm text-ink-400">
@@ -231,10 +261,11 @@ export function WalletPage() {
                   <label className="block text-sm font-medium text-ink-200">Amount (USD)</label>
                   <input type="number" min="0" step="0.01" value={depositAmount}
                     onChange={(e) => setDepositAmount(e.target.value)}
-                    className="input-base mt-1.5" placeholder="50.00" />
+                    disabled={isTrainingFunding}
+                    className="input-base mt-1.5 disabled:opacity-70" placeholder="50.00" />
                 </div>
                 <button onClick={handleDeposit} disabled={depositing} className="btn-brand mt-4 w-full py-3 disabled:opacity-60">
-                  {depositing ? 'Submitting…' : 'Submit Deposit for Review'}
+                  {depositing ? 'Submitting…' : isTrainingFunding ? 'Submit Training Funding for Review' : 'Submit Deposit for Review'}
                 </button>
               </>
             )}

@@ -142,6 +142,16 @@ export interface TrainingOverviewRow {
   trainingProgress: { completedCount: number; totalRequired: number };
   trainingCompletedAt: string | null;
   hasNegativeBalance: boolean;
+  // The referrer's most recent training-funding deposit for this referral
+  // (see deposit.service.ts) — the "submitted proof/details" an admin
+  // reviews before approving. Null until the referrer actually deposits.
+  fundingDeposit: {
+    id: string;
+    status: 'PENDING' | 'APPROVED' | 'REJECTED';
+    amount: number;
+    assetCode: string;
+    createdAt: string;
+  } | null;
 }
 
 // Minimum-necessary admin visibility for the training/referral workflow
@@ -154,6 +164,7 @@ export async function listTrainingOverviewForAdmin(): Promise<TrainingOverviewRo
         select: { id: true, fullName: true, referralCode: true, completedOrders: true, totalDeposits: true, manualTier: true },
       },
       referredUser: { select: { id: true, fullName: true, email: true, balance: true, trainingCompletedAt: true } },
+      fundingDeposits: { orderBy: { createdAt: 'desc' }, take: 1 },
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -161,6 +172,7 @@ export async function listTrainingOverviewForAdmin(): Promise<TrainingOverviewRo
   const rows: TrainingOverviewRow[] = [];
   for (const r of referrals) {
     const progress = await getProgressForAdmin(r.referredUserId);
+    const latestDeposit = r.fundingDeposits[0] ?? null;
     rows.push({
       referralId: r.id,
       customer: {
@@ -180,6 +192,15 @@ export async function listTrainingOverviewForAdmin(): Promise<TrainingOverviewRo
       trainingProgress: { completedCount: progress.completedCount, totalRequired: progress.totalRequired },
       trainingCompletedAt: r.referredUser.trainingCompletedAt ? r.referredUser.trainingCompletedAt.toISOString() : null,
       hasNegativeBalance: Number(r.referredUser.balance) < 0,
+      fundingDeposit: latestDeposit
+        ? {
+            id: latestDeposit.id,
+            status: latestDeposit.status,
+            amount: Number(latestDeposit.amount),
+            assetCode: latestDeposit.assetCode,
+            createdAt: latestDeposit.createdAt.toISOString(),
+          }
+        : null,
     });
   }
   return rows;

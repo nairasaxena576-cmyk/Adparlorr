@@ -1,15 +1,18 @@
 import type { CryptoAssetCode, Deposit, DepositStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
+import { roundMoney } from '../utils/money';
 import { findUserById, updateUser } from '../repositories/user.repository';
 import { findAssetByCode } from '../repositories/cryptoAsset.repository';
 import { createTransaction, updateTransactionStatus } from '../repositories/transaction.repository';
 import {
   createDeposit,
   findDepositById,
+  findPendingTrainingFundingDeposit,
   listDepositsForAdmin as listDepositsForAdminRepo,
   updateDepositStatus,
 } from '../repositories/deposit.repository';
+import { findReferralById, setReferralTrainingFunding } from '../repositories/referral.repository';
 import { toSafeUser, type SafeUser } from './auth.service';
 
 export interface DepositDto {
@@ -37,11 +40,39 @@ function toDto(deposit: Deposit): DepositDto {
 export interface CreateDepositInput {
   assetCode: CryptoAssetCode;
   amount: number;
+  // Set only when this deposit is a referrer paying their $1,000 training
+  // funding obligation for a specific referral (see referral.service.ts) —
+  // reuses this same deposit/approval flow rather than a separate payment
+  // mechanism. Validated below against the caller's own referrals.
+  trainingFundingReferralId?: string;
 }
 
 export interface CreateDepositResult {
   deposit: DepositDto;
   user: SafeUser;
+}
+
+async function validateTrainingFundingLink(userId: string, referralId: string, amount: number) {
+  const referral = await findReferralById(referralId);
+  if (!referral) throw AppError.notFound('Training referral not found.');
+  if (referral.referrerId !== userId) {
+    throw AppError.forbidden('You are not the referrer for this training funding request.');
+  }
+  if (referral.trainingFundingRequired === null) {
+    throw AppError.badRequest('This referral has no training funding requirement.');
+  }
+  if (referral.trainingFundedAt) {
+    throw AppError.conflict('Training funding has already been confirmed for this referral.');
+  }
+  if (roundMoney(amount) !== roundMoney(Number(referral.trainingFundingRequired))) {
+    throw AppError.badRequest(
+      `The training funding deposit must be exactly $${Number(referral.trainingFundingRequired).toFixed(2)}.`
+    );
+  }
+  const existingPending = await findPendingTrainingFundingDeposit(referralId);
+  if (existingPending) {
+    throw AppError.conflict('A training funding deposit is already pending admin review for this referral.');
+  }
 }
 
 export async function createDepositRequest(
@@ -51,8 +82,15 @@ export async function createDepositRequest(
   const user = await findUserById(userId);
   if (!user) throw AppError.unauthorized();
 
-  if (!user.trainingCompletedAt) {
+  // Funding someone else's training is not the same thing as "you must
+  // complete your own training before depositing" — a referrer sponsoring a
+  // trainee's $1,000 requirement is exempt from that ordinary customer gate.
+  if (!input.trainingFundingReferralId && !user.trainingCompletedAt) {
     throw AppError.forbidden('Complete the required training before making a deposit.');
+  }
+
+  if (input.trainingFundingReferralId) {
+    await validateTrainingFundingLink(userId, input.trainingFundingReferralId, input.amount);
   }
 
   const asset = await findAssetByCode(input.assetCode);
@@ -63,7 +101,9 @@ export async function createDepositRequest(
     throw AppError.badRequest('This deposit method is not yet configured. Please choose another option.');
   }
 
-  const description = `Simulated deposit (training exercise) — ${input.assetCode} $${input.amount.toFixed(2)}`;
+  const description = input.trainingFundingReferralId
+    ? `Training funding deposit (training exercise) — ${input.assetCode} $${input.amount.toFixed(2)}`
+    : `Simulated deposit (training exercise) — ${input.assetCode} $${input.amount.toFixed(2)}`;
 
   const deposit = await prisma.$transaction(async (tx) => {
     const transaction = await createTransaction(
@@ -79,6 +119,7 @@ export async function createDepositRequest(
         addressShown: asset.address as string,
         status: 'PENDING',
         transactionId: transaction.id,
+        trainingFundingReferralId: input.trainingFundingReferralId ?? null,
       },
       tx
     );
@@ -129,11 +170,24 @@ export async function approveDeposit(depositId: string, adminId: string): Promis
       },
       tx
     );
-    return updateDepositStatus(
+    const result = await updateDepositStatus(
       depositId,
       { status: 'APPROVED', reviewedById: adminId, reviewedAt: new Date() },
       tx
     );
+
+    // Approving the linked deposit IS what confirms the referral's training
+    // funding — no separate debit/confirm step (see referral.service.ts's
+    // training-access gate, which reads trainingFundedAt).
+    if (deposit.trainingFundingReferralId) {
+      await setReferralTrainingFunding(
+        deposit.trainingFundingReferralId,
+        { trainingFundedAt: new Date(), trainingFundingTxId: deposit.transactionId },
+        tx
+      );
+    }
+
+    return result;
   });
 
   return toDto(updated);

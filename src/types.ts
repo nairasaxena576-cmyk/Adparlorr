@@ -299,6 +299,20 @@ export interface TrainingOverviewRow {
   trainingProgress: { completedCount: number; totalRequired: number };
   trainingCompletedAt: string | null;
   hasNegativeBalance: boolean;
+  fundingDeposit: {
+    id: string;
+    status: 'PENDING' | 'APPROVED' | 'REJECTED';
+    amount: number;
+    assetCode: CryptoAssetCode;
+    createdAt: string;
+  } | null;
+}
+
+export interface TrainingFundingRequestForReferrer {
+  referralId: string;
+  customerName: string;
+  amountRequired: number;
+  depositStatus: 'NONE' | 'PENDING' | 'REJECTED' | 'APPROVED';
 }
 
 export interface SupportSettings {

@@ -10,4 +10,5 @@ export const depositSchema = z.object({
     .number()
     .positive('Amount must be greater than zero.')
     .max(SIMULATION.MAX_DEPOSIT_AMOUNT, `Amount must not exceed ${SIMULATION.MAX_DEPOSIT_AMOUNT}.`),
+  trainingFundingReferralId: z.string().uuid().optional(),
 });

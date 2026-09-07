@@ -28,3 +28,16 @@ export function updateDepositStatus(
 ) {
   return client.deposit.update({ where: { id }, data });
 }
+
+export function findPendingTrainingFundingDeposit(referralId: string, client: Client = prisma) {
+  return client.deposit.findFirst({
+    where: { trainingFundingReferralId: referralId, status: 'PENDING' },
+  });
+}
+
+export function findLatestTrainingFundingDeposit(referralId: string, client: Client = prisma) {
+  return client.deposit.findFirst({
+    where: { trainingFundingReferralId: referralId },
+    orderBy: { createdAt: 'desc' },
+  });
+}

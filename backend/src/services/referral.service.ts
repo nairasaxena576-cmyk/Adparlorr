@@ -2,6 +2,7 @@ import { AppError } from '../utils/AppError';
 import {
   listReferralsMadeBy,
   findReferralByReferredUserId,
+  listPendingTrainingFundingRequestsForReferrer,
   setReferralTrainingFunding,
   createReferral,
 } from '../repositories/referral.repository';
@@ -85,6 +86,37 @@ async function buildTrainingReferralStatus(userId: string): Promise<TrainingRefe
 
 export async function getTrainingReferralStatus(userId: string): Promise<TrainingReferralStatus> {
   return buildTrainingReferralStatus(userId);
+}
+
+export interface TrainingFundingRequestForReferrer {
+  referralId: string;
+  customerName: string;
+  amountRequired: number;
+  // 'APPROVED' should never actually appear here — approving the deposit
+  // atomically sets trainingFundedAt too (see deposit.service.ts's
+  // approveDeposit), which excludes the row from this list entirely. Kept
+  // in the type rather than silently collapsed so a broken invariant would
+  // be visible instead of mislabeled.
+  depositStatus: 'NONE' | 'PENDING' | 'REJECTED' | 'APPROVED';
+}
+
+// Requests where the caller is the REFERRER, not the trainee — see
+// deposit.service.ts's createDepositRequest/approveDeposit, which is what
+// actually fulfils these once the referrer deposits and an admin approves.
+export async function listMyTrainingFundingRequests(
+  referrerId: string
+): Promise<TrainingFundingRequestForReferrer[]> {
+  const referrals = await listPendingTrainingFundingRequestsForReferrer(referrerId);
+
+  return referrals.map((r) => {
+    const latestDeposit = r.fundingDeposits[0] ?? null;
+    return {
+      referralId: r.id,
+      customerName: r.referredUser.fullName,
+      amountRequired: Number(r.trainingFundingRequired),
+      depositStatus: latestDeposit ? latestDeposit.status : 'NONE',
+    };
+  });
 }
 
 // Called only when the customer submits a referral code on the Training

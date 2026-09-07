@@ -106,7 +106,7 @@ export function AdminTrainingReferrals() {
 function TrainingReferralsListView() {
   const rows = useStore((s) => s.adminTrainingOverview);
   const fetchAdminTrainingOverview = useStore((s) => s.fetchAdminTrainingOverview);
-  const adminConfirmTrainingFunding = useStore((s) => s.adminConfirmTrainingFunding);
+  const adminApproveDeposit = useStore((s) => s.adminApproveDeposit);
   const adminResolveNegativeBalance = useStore((s) => s.adminResolveNegativeBalance);
   const showToast = useToast();
 
@@ -117,15 +117,16 @@ function TrainingReferralsListView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleConfirmFunding = async (referralId: string) => {
-    setBusyId(referralId);
-    const result = await adminConfirmTrainingFunding(referralId);
+  const handleApproveFunding = async (depositId: string) => {
+    setBusyId(depositId);
+    const result = await adminApproveDeposit(depositId);
+    await fetchAdminTrainingOverview();
     setBusyId(null);
     if (!result.ok) {
-      showToast(result.error || 'Failed to confirm training funding.', 'error');
+      showToast(result.error || 'Failed to approve training funding.', 'error');
       return;
     }
-    showToast('Training funding confirmed.', 'success');
+    showToast('Training funding approved — customer unlocked.', 'success');
   };
 
   const handleResolveNegativeBalance = async (userId: string) => {
@@ -171,7 +172,7 @@ function TrainingReferralsListView() {
                 </tr>
               ) : (
                 rows.map((r) => {
-                  const fundingPending = r.trainingFundingRequired !== null && !r.trainingFundedAt;
+                  const deposit = r.fundingDeposit;
                   return (
                     <tr key={r.referralId} className="bg-ink-900 hover:bg-ink-800/50 align-top">
                       <td className="px-4 py-3">
@@ -196,8 +197,17 @@ function TrainingReferralsListView() {
                           <span className="text-brand-400">
                             ${r.trainingFundingRequired.toFixed(2)} confirmed {new Date(r.trainingFundedAt).toLocaleDateString()}
                           </span>
+                        ) : deposit && deposit.status === 'PENDING' ? (
+                          <div>
+                            <span className="text-amber-400">Pending Admin Review</span>
+                            <p className="text-xs text-ink-500">
+                              {deposit.assetCode} ${deposit.amount.toFixed(2)} · submitted {new Date(deposit.createdAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                        ) : deposit && deposit.status === 'REJECTED' ? (
+                          <span className="text-red-400">Deposit rejected — awaiting resubmission</span>
                         ) : (
-                          <span className="text-amber-400">${r.trainingFundingRequired.toFixed(2)} pending</span>
+                          <span className="text-ink-500">Awaiting referrer deposit (${r.trainingFundingRequired.toFixed(2)})</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-ink-200">
@@ -219,14 +229,14 @@ function TrainingReferralsListView() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-col gap-2">
-                          {fundingPending && (
+                          {deposit && deposit.status === 'PENDING' && (
                             <button
-                              onClick={() => handleConfirmFunding(r.referralId)}
-                              disabled={busyId === r.referralId}
+                              onClick={() => handleApproveFunding(deposit.id)}
+                              disabled={busyId === deposit.id}
                               className="flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-brand-600 disabled:opacity-60"
                             >
                               <Check className="h-3.5 w-3.5" />
-                              {busyId === r.referralId ? 'Confirming…' : 'Confirm Funding'}
+                              {busyId === deposit.id ? 'Approving…' : 'Approve Funding'}
                             </button>
                           )}
                           {r.hasNegativeBalance && (

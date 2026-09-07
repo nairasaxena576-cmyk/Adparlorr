@@ -48,6 +48,21 @@ export function findReferralById(id: string, client: Client = prisma) {
   });
 }
 
+// Pending (not-yet-funded) training-funding requests where the given user
+// is the referrer — the referrer-facing counterpart to the customer's own
+// training-access gate. Scoped strictly to referrerId so a referrer only
+// ever sees requests tied to their own referral code (see referral.service.ts).
+export function listPendingTrainingFundingRequestsForReferrer(referrerId: string, client: Client = prisma) {
+  return client.referral.findMany({
+    where: { referrerId, trainingFundingRequired: { not: null }, trainingFundedAt: null },
+    include: {
+      referredUser: { select: { id: true, fullName: true } },
+      fundingDeposits: { orderBy: { createdAt: 'desc' }, take: 1 },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+}
+
 export function setReferralTrainingFunding(
   id: string,
   data: Prisma.ReferralUncheckedUpdateInput,

@@ -30,6 +30,7 @@ import type {
   WorkbenchReadiness,
   SubmitWorkbenchResult,
   TrainingOverviewRow,
+  TrainingFundingRequestForReferrer,
 } from '@/types';
 
 type AuthStatus = 'idle' | 'loading' | 'authenticated' | 'unauthenticated';
@@ -100,7 +101,8 @@ interface AppState {
   fetchCryptoAssets: () => Promise<void>;
   deposit: (
     assetCode: CryptoAssetCode,
-    amount: number
+    amount: number,
+    trainingFundingReferralId?: string
   ) => Promise<{ ok: boolean; error?: string; deposit?: Deposit }>;
   requestWithdrawal: () => Promise<{ blocked: boolean; message: string }>;
 
@@ -177,6 +179,10 @@ interface AppState {
   fetchTrainingReferralStatus: () => Promise<void>;
   verifyTrainingReferral: (referralCode: string) => Promise<{ ok: boolean; error?: string }>;
 
+  // ---- Training funding requests I owe as a REFERRER (not the trainee) ----
+  trainingFundingRequests: TrainingFundingRequestForReferrer[];
+  fetchTrainingFundingRequests: () => Promise<void>;
+
   // ---- Training tasks (admin) ----
   fetchAdminTrainingTasks: () => Promise<void>;
   createAdminTrainingTask: (input: Record<string, unknown>) => Promise<ActionResult>;
@@ -208,6 +214,7 @@ export const useStore = create<AppState>()((set, get) => ({
   submissions: [],
   transactions: [],
   referralsData: null,
+  trainingFundingRequests: [],
   adminUsers: [],
   adminTrainingOverview: [],
   supportSettings: null,
@@ -341,11 +348,12 @@ export const useStore = create<AppState>()((set, get) => ({
     set({ cryptoAssets: data.assets });
   },
 
-  deposit: async (assetCode, amount) => {
+  deposit: async (assetCode, amount, trainingFundingReferralId) => {
     try {
       const { data } = await api.post<{ deposit: Deposit; user: User }>('/api/wallet/deposit', {
         assetCode,
         amount,
+        ...(trainingFundingReferralId ? { trainingFundingReferralId } : {}),
       });
       set({ currentUser: data.user });
       await get().fetchTransactions();
@@ -773,6 +781,17 @@ export const useStore = create<AppState>()((set, get) => ({
       return { ok: true };
     } catch (err) {
       return { ok: false, error: errorMessage(err, 'Failed to verify referral code.') };
+    }
+  },
+
+  fetchTrainingFundingRequests: async () => {
+    try {
+      const { data } = await api.get<{ requests: TrainingFundingRequestForReferrer[] }>(
+        '/api/referrals/training/funding-requests'
+      );
+      set({ trainingFundingRequests: data.requests });
+    } catch {
+      set({ trainingFundingRequests: [] });
     }
   },
 
