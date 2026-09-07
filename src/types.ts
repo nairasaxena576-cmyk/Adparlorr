@@ -15,6 +15,10 @@ export interface User {
   completedOrders: number;
   isMerged: boolean;
   trainingCompletedAt: string | null;
+  // Admin-granted tier override (pay-to-unlock) — combine with
+  // completedOrders/totalDeposits via resolveEffectiveTier() to get the
+  // actual current tier; this alone is not the effective tier.
+  manualTier: Tier | null;
   createdAt: string;
 }
 

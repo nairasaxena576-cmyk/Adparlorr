@@ -32,3 +32,26 @@ export function getTierProgress(completedOrders: number, totalDeposits: number, 
   const depositPct = info.minDeposits > 0 ? Math.min(100, (totalDeposits / info.minDeposits) * 100) : 100;
   return Math.round((orderPct + depositPct) / 2);
 }
+
+// The pay-to-unlock amount shown for a tier — reuses the exact same
+// minDeposits threshold already used by automatic progression above.
+export function tierUnlockAmount(tier: Tier): number {
+  return TIERS[tier].minDeposits;
+}
+
+export function tierRank(tier: Tier): number {
+  return TIER_ORDER.indexOf(tier);
+}
+
+// Mirrors the backend's resolveEffectiveTier exactly (backend/src/utils/tiers.ts)
+// — the tier a customer actually has is the higher-ranked of automatic
+// progression and an admin-granted manualTier override.
+export function resolveEffectiveTier(
+  completedOrders: number,
+  totalDeposits: number,
+  manualTier: Tier | null | undefined
+): Tier {
+  const computed = getCurrentTier(completedOrders, totalDeposits);
+  if (!manualTier) return computed;
+  return tierRank(manualTier) > tierRank(computed) ? manualTier : computed;
+}

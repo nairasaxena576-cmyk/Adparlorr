@@ -19,3 +19,11 @@ export const referralIdParamsSchema = z.object({
 export const resolveNegativeBalanceParamsSchema = z.object({
   userId: z.string().uuid('A valid userId is required.'),
 });
+
+export const grantTierParamsSchema = z.object({
+  userId: z.string().uuid('A valid userId is required.'),
+});
+
+export const grantTierBodySchema = z.object({
+  tier: z.enum(['Silver', 'Gold', 'Platinum']),
+});

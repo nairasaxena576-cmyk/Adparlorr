@@ -33,3 +33,29 @@ export function getCurrentTier(completedOrders: number, totalDeposits: number): 
 export function isEligibleReferrerTier(tier: Tier): boolean {
   return tier === 'Gold' || tier === 'Platinum';
 }
+
+// The pay-to-unlock amount shown for a given tier — reuses the exact same
+// minDeposits threshold already used by automatic progression above; no
+// separate pricing to invent or keep in sync.
+export function tierUnlockAmount(tier: Tier): number {
+  return TIERS[tier].minDeposits;
+}
+
+export function tierRank(tier: Tier): number {
+  return TIER_ORDER.indexOf(tier);
+}
+
+// The tier a customer actually has is the higher-ranked of (a) automatic
+// progression from real completedOrders/totalDeposits and (b) an
+// admin-granted manualTier override (see admin.service.ts's
+// grantTierForUser) — never just one or the other. manualTier can only
+// raise the effective tier, never lower it.
+export function resolveEffectiveTier(
+  completedOrders: number,
+  totalDeposits: number,
+  manualTier: Tier | null | undefined
+): Tier {
+  const computed = getCurrentTier(completedOrders, totalDeposits);
+  if (!manualTier) return computed;
+  return tierRank(manualTier) > tierRank(computed) ? manualTier : computed;
+}

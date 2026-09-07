@@ -6,7 +6,7 @@ import { createTransaction } from '../repositories/transaction.repository';
 import { findReferralById, setReferralTrainingFunding } from '../repositories/referral.repository';
 import { toSafeUser, type SafeUser } from './auth.service';
 import { roundMoney } from '../utils/money';
-import { getCurrentTier, type Tier } from '../utils/tiers';
+import { resolveEffectiveTier, tierRank, tierUnlockAmount, type Tier } from '../utils/tiers';
 import { getProgressForAdmin } from './trainingTask.service';
 
 export async function listUsersForAdmin(): Promise<SafeUser[]> {
@@ -150,7 +150,9 @@ export interface TrainingOverviewRow {
 export async function listTrainingOverviewForAdmin(): Promise<TrainingOverviewRow[]> {
   const referrals = await prisma.referral.findMany({
     include: {
-      referrer: { select: { id: true, fullName: true, referralCode: true, completedOrders: true, totalDeposits: true } },
+      referrer: {
+        select: { id: true, fullName: true, referralCode: true, completedOrders: true, totalDeposits: true, manualTier: true },
+      },
       referredUser: { select: { id: true, fullName: true, email: true, balance: true, trainingCompletedAt: true } },
     },
     orderBy: { createdAt: 'desc' },
@@ -170,7 +172,7 @@ export async function listTrainingOverviewForAdmin(): Promise<TrainingOverviewRo
       referrer: {
         id: r.referrer.id,
         fullName: r.referrer.fullName,
-        tier: getCurrentTier(r.referrer.completedOrders, Number(r.referrer.totalDeposits)),
+        tier: resolveEffectiveTier(r.referrer.completedOrders, Number(r.referrer.totalDeposits), r.referrer.manualTier),
       },
       referralCode: r.referrer.referralCode,
       trainingFundingRequired: r.trainingFundingRequired ? Number(r.trainingFundingRequired) : null,
@@ -181,6 +183,38 @@ export async function listTrainingOverviewForAdmin(): Promise<TrainingOverviewRo
     });
   }
   return rows;
+}
+
+// ---- Pay-to-unlock tier admin action ----
+// A customer can reach a higher tier either by the existing automatic
+// completedOrders+totalDeposits progression (unchanged), or by depositing
+// at least that tier's existing minDeposits amount through the existing
+// real deposit flow and having an admin confirm it here. This never
+// invents money or overwrites balance — it only sets a tier override,
+// auditable via a zero-amount Transaction row recording who granted it.
+export async function grantTierForUser(userId: string, tier: Tier, adminId: string): Promise<SafeUser> {
+  if (tier === 'Bronze') {
+    throw AppError.badRequest('Bronze is the default tier and cannot be granted.');
+  }
+
+  const user = await findUserById(userId);
+  if (!user) throw AppError.notFound('User not found.');
+
+  const currentEffective = resolveEffectiveTier(user.completedOrders, Number(user.totalDeposits), user.manualTier);
+  if (tierRank(tier) <= tierRank(currentEffective)) {
+    throw AppError.conflict(`This user is already at or above ${tier} tier (current: ${currentEffective}).`);
+  }
+
+  const admin = await findUserById(adminId);
+  const unlockAmount = tierUnlockAmount(tier);
+  const description = `Tier unlocked: ${tier} (requires $${unlockAmount.toFixed(2)} deposited — granted by admin ${admin?.fullName ?? adminId}).`;
+
+  const updated = await prisma.$transaction(async (tx) => {
+    await createTransaction({ userId, type: 'ADMIN_CREDIT', amount: 0, status: 'COMPLETED', description }, tx);
+    return updateUser(userId, { manualTier: tier, manualTierGrantedAt: new Date() }, tx);
+  });
+
+  return toSafeUser(updated);
 }
 
 export async function resetUserTasksAdmin(userId: string): Promise<SafeUser> {

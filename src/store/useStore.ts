@@ -108,6 +108,7 @@ interface AppState {
   fetchAdminUsers: () => Promise<void>;
   adminCreditUser: (userId: string, amount: number) => Promise<ActionResult>;
   adminResetUserTasks: (userId: string) => Promise<ActionResult>;
+  adminGrantTier: (userId: string, tier: 'Silver' | 'Gold' | 'Platinum') => Promise<ActionResult>;
 
   fetchSupportSettings: () => Promise<void>;
   fetchAdminSupportSettings: () => Promise<void>;
@@ -385,6 +386,16 @@ export const useStore = create<AppState>()((set, get) => ({
       return { ok: true };
     } catch (err) {
       return { ok: false, error: errorMessage(err, 'Reset failed.') };
+    }
+  },
+
+  adminGrantTier: async (userId, tier) => {
+    try {
+      await api.post(`/api/admin/users/${userId}/grant-tier`, { tier });
+      await get().fetchAdminUsers();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err, 'Failed to unlock tier.') };
     }
   },
 

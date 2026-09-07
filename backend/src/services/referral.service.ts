@@ -6,7 +6,7 @@ import {
   createReferral,
 } from '../repositories/referral.repository';
 import { findUserById, findUserByReferralCode } from '../repositories/user.repository';
-import { getCurrentTier, isEligibleReferrerTier, type Tier } from '../utils/tiers';
+import { resolveEffectiveTier, isEligibleReferrerTier, type Tier } from '../utils/tiers';
 
 // $1,000 training-funding requirement, fixed per the approved spec — not
 // configurable per referral, just recorded on the row for audit/display.
@@ -65,7 +65,11 @@ async function buildTrainingReferralStatus(userId: string): Promise<TrainingRefe
     };
   }
 
-  const tier = getCurrentTier(referral.referrer.completedOrders, Number(referral.referrer.totalDeposits));
+  const tier = resolveEffectiveTier(
+    referral.referrer.completedOrders,
+    Number(referral.referrer.totalDeposits),
+    referral.referrer.manualTier
+  );
 
   return {
     hasReferral: true,
@@ -94,7 +98,7 @@ export async function verifyReferralForTraining(userId: string, code: string): P
   if (!referrer) throw AppError.badRequest('Invalid referral code.');
   if (referrer.id === userId) throw AppError.badRequest('You cannot use your own referral code.');
 
-  const tier = getCurrentTier(referrer.completedOrders, Number(referrer.totalDeposits));
+  const tier = resolveEffectiveTier(referrer.completedOrders, Number(referrer.totalDeposits), referrer.manualTier);
   if (!isEligibleReferrerTier(tier)) {
     throw AppError.forbidden(
       `This referral code belongs to a ${tier} member. The inviter must be Gold or Platinum tier to sponsor training.`

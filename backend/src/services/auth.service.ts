@@ -1,4 +1,5 @@
 import type { Role, User } from '@prisma/client';
+import type { Tier } from '../utils/tiers';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import { hashPassword, verifyPassword } from '../utils/password';
@@ -24,6 +25,10 @@ export interface SafeUser {
   completedOrders: number;
   isMerged: boolean;
   trainingCompletedAt: Date | null;
+  // Admin-granted tier override (pay-to-unlock) — combine with
+  // completedOrders/totalDeposits via resolveEffectiveTier() to get the
+  // customer's actual current tier; this alone is not the effective tier.
+  manualTier: Tier | null;
   createdAt: Date;
 }
 
@@ -41,6 +46,7 @@ export function toSafeUser(user: User): SafeUser {
     completedOrders: user.completedOrders,
     isMerged: user.isMerged,
     trainingCompletedAt: user.trainingCompletedAt,
+    manualTier: user.manualTier,
     createdAt: user.createdAt,
   };
 }

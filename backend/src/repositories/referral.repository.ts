@@ -32,7 +32,9 @@ export function activateReferralFor(referredUserId: string, client: Client = pri
 export function findReferralByReferredUserId(referredUserId: string, client: Client = prisma) {
   return client.referral.findUnique({
     where: { referredUserId },
-    include: { referrer: { select: { id: true, fullName: true, completedOrders: true, totalDeposits: true } } },
+    include: {
+      referrer: { select: { id: true, fullName: true, completedOrders: true, totalDeposits: true, manualTier: true } },
+    },
   });
 }
 

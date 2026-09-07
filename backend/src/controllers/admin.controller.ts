@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import type { CryptoAssetCode, DepositStatus } from '@prisma/client';
 import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/apiResponse';
+import type { Tier } from '../utils/tiers';
 import {
   listUsersForAdmin,
   creditUserSimulated,
@@ -9,6 +10,7 @@ import {
   listTrainingOverviewForAdmin,
   confirmTrainingFunding,
   resolveTrainingNegativeBalance,
+  grantTierForUser,
 } from '../services/admin.service';
 import { getSupportSettings, updateSupportSettings } from '../services/supportSettings.service';
 import { listAssetsForAdmin, updateCryptoAsset } from '../services/cryptoAsset.service';
@@ -50,6 +52,13 @@ export const postResolveNegativeBalance = asyncHandler(async (req: Request, res:
   const { userId } = req.params as { userId: string };
   const result = await resolveTrainingNegativeBalance(userId, req.user!.id);
   ok(res, result);
+});
+
+export const postGrantTier = asyncHandler(async (req: Request, res: Response) => {
+  const { userId } = req.params as { userId: string };
+  const { tier } = req.body as { tier: Tier };
+  const user = await grantTierForUser(userId, tier, req.user!.id);
+  ok(res, { user });
 });
 
 export const getAdminSupportSettings = asyncHandler(async (_req: Request, res: Response) => {

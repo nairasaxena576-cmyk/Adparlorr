@@ -1,13 +1,15 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ShoppingBag, DollarSign, Wallet, ArrowRight, Award, TrendingUp } from 'lucide-react';
+import { ShoppingBag, DollarSign, Wallet, ArrowRight, Award, TrendingUp, Lock } from 'lucide-react';
 import { useStore } from '@/store/useStore';
-import { getCurrentTier, getNextTier, getTierProgress, TIERS } from '@/utils/tiers';
+import { getNextTier, getTierProgress, resolveEffectiveTier, tierUnlockAmount, tierRank, TIERS } from '@/utils/tiers';
 import type { Tier } from '@/types';
 
 export function DashboardHome() {
   const user = useStore((s) => s.getCurrentUser())!;
+  const [selectedTier, setSelectedTier] = useState<Tier | null>(null);
 
-  const tier = getCurrentTier(user.completedOrders, user.totalDeposits);
+  const tier = resolveEffectiveTier(user.completedOrders, user.totalDeposits, user.manualTier);
   const nextTier = getNextTier(tier);
   const progress = nextTier ? getTierProgress(user.completedOrders, user.totalDeposits, nextTier) : 100;
 
@@ -61,18 +63,39 @@ export function DashboardHome() {
           {(Object.keys(TIERS) as Tier[]).map((t) => {
             const info = TIERS[t];
             const isCurrent = t === tier;
+            const isLocked = tierRank(t) > tierRank(tier);
             return (
-              <div
+              <button
                 key={t}
-                className={`rounded-lg border px-3 py-2 text-sm font-semibold ${
-                  isCurrent ? 'border-brand-500 bg-brand-500/15 text-brand-600' : 'border-pink-200 text-ink-500'
+                type="button"
+                onClick={() => setSelectedTier(isLocked ? (selectedTier === t ? null : t) : null)}
+                className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                  isCurrent
+                    ? 'border-brand-500 bg-brand-500/15 text-brand-600'
+                    : isLocked
+                    ? 'border-pink-200 text-ink-500 hover:border-brand-300 hover:text-brand-600'
+                    : 'border-pink-200 text-ink-500'
                 }`}
               >
+                {isLocked && <Lock className="h-3.5 w-3.5" />}
                 {info.name}
-              </div>
+              </button>
             );
           })}
         </div>
+
+        {selectedTier && (
+          <div className="mt-4 rounded-xl border border-pink-200 bg-pink-50 p-4">
+            <p className="text-sm font-semibold text-ink-900">Unlock {selectedTier} early</p>
+            <p className="mt-1 text-sm text-ink-600">
+              Deposit at least <span className="font-bold text-brand-600">${tierUnlockAmount(selectedTier).toFixed(2)}</span> and
+              an admin will confirm your {selectedTier} tier — no need to wait for orders/deposits to add up naturally.
+            </p>
+            <Link to="/dashboard/wallet" className="btn-brand mt-3">
+              <Wallet className="h-4 w-4" /> Go to Wallet to Deposit
+            </Link>
+          </div>
+        )}
 
         <div className="mt-6 rounded-xl bg-pink-50 p-5">
           <div className="flex items-center justify-between">

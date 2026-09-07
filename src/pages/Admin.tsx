@@ -4,9 +4,11 @@ import { Shield, Plus, RotateCcw, LogOut, ChevronLeft, Send, Check, X as XIcon }
 import { useStore } from '@/store/useStore';
 import { useToast } from '@/components/Toast';
 import { LoadingScreen } from '@/components/LoadingScreen';
-import type { CryptoAssetCode } from '@/types';
+import type { CryptoAssetCode, Tier } from '@/types';
+import { resolveEffectiveTier } from '@/utils/tiers';
 
 const CRYPTO_ASSET_CODES: CryptoAssetCode[] = ['USDT', 'BTC', 'ETH'];
+const GRANTABLE_TIERS: Tier[] = ['Silver', 'Gold', 'Platinum'];
 
 export function Admin() {
   const navigate = useNavigate();
@@ -18,6 +20,7 @@ export function Admin() {
   const fetchAdminUsers = useStore((s) => s.fetchAdminUsers);
   const adminCreditUser = useStore((s) => s.adminCreditUser);
   const adminResetUserTasks = useStore((s) => s.adminResetUserTasks);
+  const adminGrantTier = useStore((s) => s.adminGrantTier);
   const supportSettings = useStore((s) => s.supportSettings);
   const fetchAdminSupportSettings = useStore((s) => s.fetchAdminSupportSettings);
   const updateAdminSupportSettings = useStore((s) => s.updateAdminSupportSettings);
@@ -38,6 +41,8 @@ export function Admin() {
   const [submitting, setSubmitting] = useState(false);
   const [creditAmounts, setCreditAmounts] = useState<Record<string, string>>({});
   const [busyUserId, setBusyUserId] = useState<string | null>(null);
+  const [tierSelections, setTierSelections] = useState<Record<string, Tier>>({});
+  const [busyTierUserId, setBusyTierUserId] = useState<string | null>(null);
 
   const [telegramUsernameInput, setTelegramUsernameInput] = useState('');
   const [telegramEnabledInput, setTelegramEnabledInput] = useState(false);
@@ -202,6 +207,18 @@ export function Admin() {
     showToast('User tasks reset.', 'success');
   };
 
+  const handleGrantTier = async (userId: string) => {
+    const tier = tierSelections[userId] ?? 'Silver';
+    setBusyTierUserId(userId);
+    const result = await adminGrantTier(userId, tier as 'Silver' | 'Gold' | 'Platinum');
+    setBusyTierUserId(null);
+    if (!result.ok) {
+      showToast(result.error || 'Failed to unlock tier.', 'error');
+      return;
+    }
+    showToast(`${tier} tier unlocked for user.`, 'success');
+  };
+
   if (authStatus === 'idle' || authStatus === 'loading') return <LoadingScreen />;
 
   if (!isAdmin) {
@@ -287,13 +304,14 @@ export function Admin() {
                   <th className="px-4 py-3 text-right font-semibold">Balance</th>
                   <th className="px-4 py-3 text-right font-semibold">Orders</th>
                   <th className="px-4 py-3 text-right font-semibold">Deposits</th>
+                  <th className="px-4 py-3 font-semibold">Tier</th>
                   <th className="px-4 py-3 font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-700">
                 {adminUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-ink-400">No users registered yet.</td>
+                    <td colSpan={7} className="px-4 py-8 text-center text-ink-400">No users registered yet.</td>
                   </tr>
                 ) : (
                   adminUsers.map((u) => (
@@ -313,6 +331,35 @@ export function Admin() {
                       <td className="px-4 py-3 text-right font-bold text-brand-400">${u.balance.toFixed(2)}</td>
                       <td className="px-4 py-3 text-right text-ink-200">{u.completedOrders}</td>
                       <td className="px-4 py-3 text-right text-ink-200">${u.totalDeposits.toFixed(0)}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col gap-1.5">
+                          <span className="text-xs font-semibold text-ink-200">
+                            {resolveEffectiveTier(u.completedOrders, u.totalDeposits, u.manualTier)}
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <select
+                              value={tierSelections[u.id] ?? 'Silver'}
+                              onChange={(e) =>
+                                setTierSelections((prev) => ({ ...prev, [u.id]: e.target.value as Tier }))
+                              }
+                              disabled={busyTierUserId === u.id}
+                              className="rounded border border-ink-600 bg-ink-800 px-1.5 py-1 text-xs text-white outline-none focus:border-brand-500 disabled:opacity-60"
+                            >
+                              {GRANTABLE_TIERS.map((t) => (
+                                <option key={t} value={t}>{t}</option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={() => handleGrantTier(u.id)}
+                              disabled={busyTierUserId === u.id}
+                              className="rounded bg-brand-500 px-2 py-1 text-xs font-semibold text-white transition hover:bg-brand-600 disabled:opacity-60"
+                              title="Confirm deposit and unlock this tier"
+                            >
+                              Unlock
+                            </button>
+                          </div>
+                        </div>
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <input

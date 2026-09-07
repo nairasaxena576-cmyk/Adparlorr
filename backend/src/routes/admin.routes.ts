@@ -13,6 +13,7 @@ import {
   getTrainingOverview,
   postConfirmTrainingFunding,
   postResolveNegativeBalance,
+  postGrantTier,
 } from '../controllers/admin.controller';
 import { requireAuth } from '../middleware/requireAuth';
 import { requireRole } from '../middleware/requireRole';
@@ -24,6 +25,8 @@ import {
   resetUserParamsSchema,
   referralIdParamsSchema,
   resolveNegativeBalanceParamsSchema,
+  grantTierParamsSchema,
+  grantTierBodySchema,
 } from '../schemas/admin.schema';
 import { updateSupportSettingsSchema } from '../schemas/supportSettings.schema';
 import { cryptoAssetCodeParamsSchema, updateCryptoAssetBodySchema } from '../schemas/cryptoAsset.schema';
@@ -77,6 +80,12 @@ adminRouter.post(
   verifyCsrf,
   validate({ params: resolveNegativeBalanceParamsSchema }),
   postResolveNegativeBalance
+);
+adminRouter.post(
+  '/users/:userId/grant-tier',
+  verifyCsrf,
+  validate({ params: grantTierParamsSchema, body: grantTierBodySchema }),
+  postGrantTier
 );
 
 adminRouter.get('/deposits', validate({ query: listDepositsQuerySchema }), getAdminDeposits);
