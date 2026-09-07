@@ -1,85 +1,42 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, HeadphonesIcon, MessageCircle } from 'lucide-react';
 import { useStore } from '@/store/useStore';
-import type { ChatMessage } from '@/types';
 
-const FAKE_ADDRESS = 'TX9z8mK2nLp4qR7vB3cF6dH1jW5yG0sA8b';
-
-function genId() {
-  return Math.random().toString(36).slice(2, 10);
-}
-
-function getBotResponse(text: string, userBalance: number): string {
-  const lower = text.toLowerCase();
-
-  if (lower.includes('merged') || lower.includes('merge') || lower.includes('product issue')) {
-    const needed = Math.max(50, (100 - userBalance).toFixed(0) === '0' ? 50 : 100 - Math.floor(userBalance));
-    return `Please deposit $${needed} to clear the merged product and continue working. Here is the deposit address: ${FAKE_ADDRESS}`;
-  }
-  if (lower.includes("can't withdraw") || lower.includes('cannot withdraw') || lower.includes('withdraw')) {
-    return `You need at least $100 balance to withdraw. Your current balance is $${userBalance.toFixed(2)}. Please deposit more to reach the minimum.`;
-  }
-  if (lower.includes('deposit') || lower.includes('how') || lower.includes('pay')) {
-    return `You can deposit using USDT or BTC. Send your payment to: ${FAKE_ADDRESS}. Once confirmed, your balance will be updated automatically.`;
-  }
-  if (lower.includes('hello') || lower.includes('hi') || lower.includes('hey')) {
-    return `Hello! Welcome to Adparlor Support. How can I help you today? If you have a merged product issue, please let me know.`;
-  }
-  if (lower.includes('tier') || lower.includes('upgrade')) {
-    return `To upgrade your tier, you need to complete more orders and increase your total deposits. Keep working and depositing to reach Silver!`;
-  }
-  if (lower.includes('balance') || lower.includes('money') || lower.includes('account')) {
-    return `Your current balance is $${userBalance.toFixed(2)}. If you need to continue working, please make a deposit to unlock your tasks.`;
-  }
-  return `I understand your concern. To resolve this issue, please make a deposit of $50 or more. Once your payment is confirmed, your account will be fully restored. Deposit address: ${FAKE_ADDRESS}`;
-}
+const POLL_INTERVAL_MS = 4000;
 
 export function Support() {
-  const user = useStore((s) => s.getCurrentUser())!;
   const supportSettings = useStore((s) => s.supportSettings);
   const fetchSupportSettings = useStore((s) => s.fetchSupportSettings);
+  const messages = useStore((s) => s.supportMessages);
+  const fetchSupportMessages = useStore((s) => s.fetchSupportMessages);
+  const sendSupportMessage = useStore((s) => s.sendSupportMessage);
+
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchSupportSettings();
+    fetchSupportMessages();
+    const interval = setInterval(fetchSupportMessages, POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: genId(),
-      sender: 'bot',
-      text: 'Hello! Welcome to Adparlor Support. How can I help you today?',
-      createdAt: Date.now(),
-    },
-  ]);
-  const [input, setInput] = useState('');
-  const [typing, setTyping] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, typing]);
+  }, [messages]);
 
-  const sendMessage = (e: React.FormEvent) => {
+  const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     const text = input.trim();
-    if (!text) return;
-
-    const userMsg: ChatMessage = { id: genId(), sender: 'user', text, createdAt: Date.now() };
-    setMessages((prev) => [...prev, userMsg]);
+    if (!text || sending) return;
     setInput('');
-    setTyping(true);
-
-    const response = getBotResponse(text, user.balance);
-    const delay = 1200 + Math.random() * 800;
-
-    setTimeout(() => {
-      const botMsg: ChatMessage = { id: genId(), sender: 'bot', text: response, createdAt: Date.now() };
-      setMessages((prev) => [...prev, botMsg]);
-      setTyping(false);
-    }, delay);
+    setSending(true);
+    await sendSupportMessage(text);
+    setSending(false);
   };
 
   const quickPrompts = ['I have a merged product issue', "I can't withdraw", 'How do I deposit?'];
@@ -108,25 +65,22 @@ export function Support() {
 
         {/* Messages */}
         <div ref={scrollRef} className="scrollbar-thin flex-1 space-y-3 overflow-y-auto px-5 py-4">
-          {messages.map((msg) => (
-            <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
-                msg.sender === 'user'
-                  ? 'bg-brand-500 text-white'
-                  : 'bg-pink-50 text-ink-800'
-              }`}>
-                {msg.text}
+          {messages.length === 0 ? (
+            <p className="py-6 text-center text-sm text-ink-500">
+              Send a message below to start a conversation with our support team.
+            </p>
+          ) : (
+            messages.map((msg) => (
+              <div key={msg.id} className={`flex ${msg.sender === 'CUSTOMER' ? 'justify-end' : 'justify-start'}`}>
+                <div
+                  className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
+                    msg.sender === 'CUSTOMER' ? 'bg-brand-500 text-white' : 'bg-pink-50 text-ink-800'
+                  }`}
+                >
+                  {msg.text}
+                </div>
               </div>
-            </div>
-          ))}
-          {typing && (
-            <div className="flex justify-start">
-              <div className="flex items-center gap-1 rounded-2xl bg-pink-50 px-4 py-3">
-                <span className="h-2 w-2 rounded-full bg-ink-400 animate-blink" style={{ animationDelay: '0s' }} />
-                <span className="h-2 w-2 rounded-full bg-ink-400 animate-blink" style={{ animationDelay: '0.2s' }} />
-                <span className="h-2 w-2 rounded-full bg-ink-400 animate-blink" style={{ animationDelay: '0.4s' }} />
-              </div>
-            </div>
+            ))
           )}
         </div>
 
@@ -152,7 +106,7 @@ export function Support() {
             placeholder="Type your message..."
             className="input-base-c flex-1"
           />
-          <button type="submit" className="btn-brand !px-4" disabled={!input.trim()}>
+          <button type="submit" className="btn-brand !px-4" disabled={!input.trim() || sending}>
             <Send className="h-4 w-4" />
           </button>
         </form>

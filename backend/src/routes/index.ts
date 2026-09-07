@@ -6,6 +6,7 @@ import { walletRouter } from './wallet.routes';
 import { referralRouter } from './referral.routes';
 import { adminRouter } from './admin.routes';
 import { supportRouter } from './support.routes';
+import { adminSupportRouter } from './adminSupport.routes';
 import { trainingRouter } from './training.routes';
 import { trainingAdminRouter } from './trainingAdmin.routes';
 import { trainingTaskRouter } from './trainingTask.routes';
@@ -26,6 +27,7 @@ apiRouter.use('/admin', adminRouter);
 apiRouter.use('/admin/training', trainingAdminRouter);
 apiRouter.use('/admin/training', trainingTaskAdminRouter);
 apiRouter.use('/support', supportRouter);
+apiRouter.use('/admin/support', adminSupportRouter);
 // Same pattern for the customer-facing training API.
 apiRouter.use('/training', trainingRouter);
 apiRouter.use('/training', trainingTaskRouter);

@@ -321,11 +321,23 @@ export interface SupportSettings {
   telegramUrl: string | null;
 }
 
-export interface ChatMessage {
+export type SupportMessageSender = 'CUSTOMER' | 'BOT' | 'ADMIN';
+
+export interface SupportMessageDto {
   id: string;
-  sender: 'user' | 'bot';
+  sender: SupportMessageSender;
   text: string;
-  createdAt: number;
+  createdAt: string;
+  readByAdmin: boolean;
+  readByCustomer: boolean;
+}
+
+export interface AdminSupportConversation {
+  userId: string;
+  fullName: string;
+  email: string;
+  lastMessage: { text: string; sender: SupportMessageSender; createdAt: string };
+  unreadCount: number;
 }
 
 export interface Product {

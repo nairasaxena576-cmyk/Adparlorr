@@ -31,6 +31,8 @@ import type {
   SubmitWorkbenchResult,
   TrainingOverviewRow,
   TrainingFundingRequestForReferrer,
+  SupportMessageDto,
+  AdminSupportConversation,
 } from '@/types';
 
 type AuthStatus = 'idle' | 'loading' | 'authenticated' | 'unauthenticated';
@@ -56,6 +58,9 @@ interface AppState {
   referralsData: ReferralsData | null;
   adminUsers: User[];
   supportSettings: SupportSettings | null;
+  supportMessages: SupportMessageDto[];
+  adminSupportConversations: AdminSupportConversation[];
+  adminSupportMessages: SupportMessageDto[];
   cryptoAssets: CryptoAsset[];
   adminCryptoAssets: CryptoAsset[];
   adminDeposits: AdminDeposit[];
@@ -124,6 +129,13 @@ interface AppState {
     telegramUsername: string;
     telegramEnabled: boolean;
   }) => Promise<ActionResult>;
+
+  fetchSupportMessages: () => Promise<void>;
+  sendSupportMessage: (text: string) => Promise<ActionResult>;
+
+  fetchAdminSupportConversations: () => Promise<void>;
+  fetchAdminSupportConversationMessages: (userId: string) => Promise<void>;
+  sendAdminSupportReply: (userId: string, text: string) => Promise<ActionResult>;
 
   fetchAdminCryptoAssets: () => Promise<void>;
   updateAdminCryptoAsset: (
@@ -218,6 +230,9 @@ export const useStore = create<AppState>()((set, get) => ({
   adminUsers: [],
   adminTrainingOverview: [],
   supportSettings: null,
+  supportMessages: [],
+  adminSupportConversations: [],
+  adminSupportMessages: [],
   cryptoAssets: [],
   adminCryptoAssets: [],
   adminDeposits: [],
@@ -285,6 +300,9 @@ export const useStore = create<AppState>()((set, get) => ({
       referralsData: null,
       adminUsers: [],
       supportSettings: null,
+      supportMessages: [],
+      adminSupportConversations: [],
+      adminSupportMessages: [],
       cryptoAssets: [],
       adminCryptoAssets: [],
       adminDeposits: [],
@@ -456,6 +474,46 @@ export const useStore = create<AppState>()((set, get) => ({
       return { ok: true };
     } catch (err) {
       return { ok: false, error: errorMessage(err, 'Failed to save Telegram settings.') };
+    }
+  },
+
+  fetchSupportMessages: async () => {
+    const { data } = await api.get<{ messages: SupportMessageDto[] }>('/api/support/messages');
+    set({ supportMessages: data.messages });
+  },
+
+  sendSupportMessage: async (text) => {
+    try {
+      const { data } = await api.post<{ messages: SupportMessageDto[] }>('/api/support/messages', { text });
+      set((state) => ({ supportMessages: [...state.supportMessages, ...data.messages] }));
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err, 'Failed to send message.') };
+    }
+  },
+
+  fetchAdminSupportConversations: async () => {
+    const { data } = await api.get<{ conversations: AdminSupportConversation[] }>('/api/admin/support/conversations');
+    set({ adminSupportConversations: data.conversations });
+  },
+
+  fetchAdminSupportConversationMessages: async (userId) => {
+    const { data } = await api.get<{ messages: SupportMessageDto[] }>(
+      `/api/admin/support/conversations/${userId}/messages`
+    );
+    set({ adminSupportMessages: data.messages });
+  },
+
+  sendAdminSupportReply: async (userId, text) => {
+    try {
+      const { data } = await api.post<{ message: SupportMessageDto }>(
+        `/api/admin/support/conversations/${userId}/messages`,
+        { text }
+      );
+      set((state) => ({ adminSupportMessages: [...state.adminSupportMessages, data.message] }));
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err, 'Failed to send reply.') };
     }
   },
 
