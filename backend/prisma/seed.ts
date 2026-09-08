@@ -2,27 +2,25 @@ import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
-import { buildSyntheticProducts } from '../src/lib/productCatalog';
+import { seedWorkbenchCatalog } from '../src/lib/workbenchCatalog';
 import { SMC_COURSE, SMC_CHAPTERS, SMC_QUESTIONS } from './seedData/smcCourse';
 
 const prisma = new PrismaClient();
 
+// Populates the real, 55-item Workbench product catalog (see
+// src/lib/workbenchCatalog.ts) — 40 Bronze + 5 Silver + 5 Gold + 5
+// Platinum, matching the fixed cumulative tier bands in
+// config/simulation.ts. Idempotent: upserts by displayOrder (a unique
+// column), so re-running this never creates duplicates. Existing rows at
+// the same displayOrder (including any older placeholder catalog data) are
+// updated in place — their id, and therefore any historical
+// TaskSubmission referencing them, is preserved; nothing is ever deleted.
+// TaskSubmission stores its own rewardAmount/costAmount snapshot at
+// submission time (see productAdmin.service.ts), so updating a product's
+// name/category/price here never alters historical order records.
 async function seedProducts() {
-  const products = buildSyntheticProducts();
-  for (const product of products) {
-    await prisma.product.upsert({
-      where: { displayOrder: product.displayOrder },
-      update: {
-        name: product.name,
-        category: product.category,
-        reward: product.reward,
-        cost: product.cost,
-        isActive: true,
-      },
-      create: product,
-    });
-  }
-  console.log(`Seeded ${products.length} training-simulation products.`);
+  const products = await seedWorkbenchCatalog(prisma);
+  console.log(`Seeded ${products.length} Workbench catalog products (real components, chipspulse.com-verified).`);
 }
 
 async function seedCryptoAssets() {
