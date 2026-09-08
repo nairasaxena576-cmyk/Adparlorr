@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import {
   Wallet,
   ArrowDownToLine,
@@ -8,7 +8,6 @@ import {
   DollarSign,
   CheckCircle2,
   Lock,
-  ArrowRight,
 } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { useToast } from '@/components/Toast';
@@ -143,26 +142,6 @@ export function WalletPage() {
           </button>
         </div>
       </div>
-
-      {/* Training-gate notice */}
-      {!trainingCompleted && !isTrainingFunding && (
-        <div className="card-c border-amber-300 bg-amber-50">
-          <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
-            <div className="flex items-start gap-3">
-              <Lock className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
-              <div>
-                <p className="font-bold text-amber-700">🔒 Deposits</p>
-                <p className="mt-1 text-sm text-amber-700/80">
-                  Complete your required training before making a deposit.
-                </p>
-              </div>
-            </div>
-            <Link to="/dashboard/training" className="btn-brand bg-amber-500 hover:bg-amber-600">
-              Continue Training <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-        </div>
-      )}
 
       {/* Transaction history */}
       <div className="card-c">
