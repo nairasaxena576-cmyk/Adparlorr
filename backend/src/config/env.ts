@@ -60,6 +60,15 @@ const envSchema = z.object({
   SUPABASE_URL: z.string().url('SUPABASE_URL must be a valid URL').optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
   SUPABASE_STORAGE_BUCKET: z.string().min(1).default('training-task-images'),
+
+  // One-time production bootstrap switch for the 55-product Workbench
+  // catalog (see src/bootstrap/workbenchCatalogBootstrap.ts) — for
+  // environments (e.g. Render's free plan) with no Shell/One-Off Job
+  // access to run `npm run db:seed` manually. Defaults to false/off; must
+  // be explicitly set to the literal string "true" to do anything, and is
+  // never honored outside NODE_ENV=production regardless of this flag —
+  // see that module. Never enable this in a committed file.
+  WORKBENCH_CATALOG_BOOTSTRAP: booleanFromEnv(false),
 });
 
 // Placeholder-looking secrets that must never reach a production process —
