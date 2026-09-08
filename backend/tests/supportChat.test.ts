@@ -311,6 +311,77 @@ describe('support chat — guest (unauthenticated) conversations', () => {
   });
 });
 
+// Regression coverage for the production bug where the frontend
+// (adparlorr.com) and backend (api.adparlorr.com) sit on different hosts:
+// a CSRF cookie without a shared COOKIE_DOMAIN is host-only, so
+// document.cookie on the frontend page can never see it, even though the
+// browser still auto-attaches it to requests. That silently drops the
+// X-CSRF-Token header on every POST and 403s. These tests deliberately
+// never read the raw Set-Cookie header (the thing supertest's
+// extractCsrfToken relies on, and the thing a real cross-origin frontend
+// cannot do) — they use ONLY the csrfToken value from the JSON response
+// body, exactly like the fixed frontend now does, proving the fix works
+// independent of cookie cross-origin visibility.
+describe('support chat — CSRF token delivery (cross-origin frontend/backend split)', () => {
+  it('an authenticated customer can send a message using only the csrfToken from the messages response body', async () => {
+    const customer = await registerAndLogin();
+    const getRes = await customer.agent.get('/api/support/messages');
+    expect(getRes.status).toBe(200);
+    expect(typeof getRes.body.data.csrfToken).toBe('string');
+    expect(getRes.body.data.csrfToken.length).toBeGreaterThan(0);
+
+    const postRes = await customer.agent
+      .post('/api/support/messages')
+      .set('X-CSRF-Token', getRes.body.data.csrfToken)
+      .send({ text: 'hello via body-sourced token' });
+    expect(postRes.status).toBe(201);
+  });
+
+  it("a guest's very first request already returns a usable csrfToken in the body (not just as a Set-Cookie header)", async () => {
+    const agent = request.agent(app);
+    const firstRes = await agent.get('/api/support/messages');
+    expect(firstRes.status).toBe(200);
+    expect(typeof firstRes.body.data.csrfToken).toBe('string');
+    expect(firstRes.body.data.csrfToken.length).toBeGreaterThan(0);
+
+    // Sent using ONLY the body-supplied token — never touching Set-Cookie.
+    const postRes = await agent
+      .post('/api/support/messages')
+      .set('X-CSRF-Token', firstRes.body.data.csrfToken)
+      .send({ text: 'guest first-contact message via body-sourced token' });
+    expect(postRes.status).toBe(201);
+  });
+
+  it('a guest can keep using the response-body csrfToken across multiple messages in the same conversation', async () => {
+    const agent = request.agent(app);
+    const firstRes = await agent.get('/api/support/messages');
+    const token = firstRes.body.data.csrfToken as string;
+
+    const first = await agent.post('/api/support/messages').set('X-CSRF-Token', token).send({ text: 'message one' });
+    expect(first.status).toBe(201);
+
+    // A later GET's echoed token must still work for a subsequent POST.
+    const secondGet = await agent.get('/api/support/messages');
+    const secondToken = secondGet.body.data.csrfToken as string;
+    const second = await agent
+      .post('/api/support/messages')
+      .set('X-CSRF-Token', secondToken)
+      .send({ text: 'message two' });
+    expect(second.status).toBe(201);
+
+    const texts = secondGet.body.data.messages.map((m: { text: string }) => m.text);
+    expect(texts).toContain('message one');
+  });
+
+  it('rejects a POST with a stale/incorrect csrfToken even if it looks well-formed', async () => {
+    const agent = request.agent(app);
+    await agent.get('/api/support/messages'); // establishes the real guest+csrf cookies
+    const forged = 'a'.repeat(48); // same shape as a real token, but not the issued value
+    const res = await agent.post('/api/support/messages').set('X-CSRF-Token', forged).send({ text: 'nope' });
+    expect(res.status).toBe(403);
+  });
+});
+
 describe('support chat — bot behavior', () => {
   it('produces a BOT reply when no admin has taken over the thread', async () => {
     const customer = await registerAndLogin();

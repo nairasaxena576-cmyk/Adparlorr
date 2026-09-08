@@ -39,7 +39,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<{ da
   const headers: Record<string, string> = { ...(options.headers as Record<string, string>) };
 
   if (options.body) headers['Content-Type'] = 'application/json';
-  if (!SAFE_METHODS.has(method)) {
+  // Only fall back to reading the cookie directly if the caller hasn't
+  // already supplied a known-good token (see the support store, which uses
+  // the value the backend echoes in its response body — document.cookie
+  // can't see a cookie scoped to a different host than this page, which is
+  // exactly the case when the API lives on a different subdomain).
+  if (!SAFE_METHODS.has(method) && !headers['X-CSRF-Token']) {
     const csrfToken = getCookie('adp_csrf');
     if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
   }
@@ -85,8 +90,8 @@ async function upload<T>(path: string, formData: FormData): Promise<{ data: T; m
 
 export const api = {
   get: <T>(path: string) => request<T>(path),
-  post: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: 'POST', body: body !== undefined ? JSON.stringify(body) : undefined }),
+  post: <T>(path: string, body?: unknown, headers?: Record<string, string>) =>
+    request<T>(path, { method: 'POST', body: body !== undefined ? JSON.stringify(body) : undefined, headers }),
   patch: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'PATCH', body: body !== undefined ? JSON.stringify(body) : undefined }),
   put: <T>(path: string, body?: unknown) =>

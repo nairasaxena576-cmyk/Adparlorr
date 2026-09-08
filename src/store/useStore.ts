@@ -59,6 +59,12 @@ interface AppState {
   adminUsers: User[];
   supportSettings: SupportSettings | null;
   supportMessages: SupportMessageDto[];
+  // The CSRF token echoed by /api/support/messages' response body (see
+  // support.controller.ts). document.cookie can't reliably read adp_csrf
+  // when the API lives on a different host than the page (e.g.
+  // api.adparlorr.com vs adparlorr.com in production) — this is the
+  // topology-independent fallback the support flow uses instead.
+  supportCsrfToken: string | null;
   adminSupportConversations: AdminSupportConversation[];
   adminSupportMessages: SupportMessageDto[];
   cryptoAssets: CryptoAsset[];
@@ -230,6 +236,7 @@ export const useStore = create<AppState>()((set, get) => ({
   adminTrainingOverview: [],
   supportSettings: null,
   supportMessages: [],
+  supportCsrfToken: null,
   adminSupportConversations: [],
   adminSupportMessages: [],
   cryptoAssets: [],
@@ -300,6 +307,7 @@ export const useStore = create<AppState>()((set, get) => ({
       adminUsers: [],
       supportSettings: null,
       supportMessages: [],
+      supportCsrfToken: null,
       adminSupportConversations: [],
       adminSupportMessages: [],
       cryptoAssets: [],
@@ -465,14 +473,22 @@ export const useStore = create<AppState>()((set, get) => ({
   },
 
   fetchSupportMessages: async () => {
-    const { data } = await api.get<{ messages: SupportMessageDto[] }>('/api/support/messages');
-    set({ supportMessages: data.messages });
+    const { data } = await api.get<{ messages: SupportMessageDto[]; csrfToken?: string }>('/api/support/messages');
+    set({ supportMessages: data.messages, ...(data.csrfToken ? { supportCsrfToken: data.csrfToken } : {}) });
   },
 
   sendSupportMessage: async (text) => {
     try {
-      const { data } = await api.post<{ messages: SupportMessageDto[] }>('/api/support/messages', { text });
-      set((state) => ({ supportMessages: [...state.supportMessages, ...data.messages] }));
+      const csrfToken = get().supportCsrfToken;
+      const { data } = await api.post<{ messages: SupportMessageDto[]; csrfToken?: string }>(
+        '/api/support/messages',
+        { text },
+        csrfToken ? { 'X-CSRF-Token': csrfToken } : undefined
+      );
+      set((state) => ({
+        supportMessages: [...state.supportMessages, ...data.messages],
+        ...(data.csrfToken ? { supportCsrfToken: data.csrfToken } : {}),
+      }));
       return { ok: true };
     } catch (err) {
       return { ok: false, error: errorMessage(err, 'Failed to send message.') };

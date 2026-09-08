@@ -44,10 +44,14 @@ export async function resolveSupportIdentity(req: Request, res: Response, next: 
     // First contact from this visitor — mint a new guest identity and, since
     // they have no session and therefore no CSRF cookie yet either, issue
     // one now (same mechanism login/register use) so their next POST
-    // message passes verifyCsrf.
+    // message passes verifyCsrf. req.cookies reflects only what the browser
+    // sent on THIS request, so it won't contain the cookie we just told the
+    // response to set — stash the value on req so the controller can still
+    // return it in the response body this same round-trip (see
+    // support.controller.ts's currentCsrfToken).
     const guestId = crypto.randomBytes(32).toString('hex');
     res.cookie(GUEST_SUPPORT_COOKIE_NAME, guestId, guestSupportCookieOptions());
-    issueCsrfCookie(res);
+    req.freshCsrfToken = issueCsrfCookie(res);
     req.supportIdentity = { type: 'guest', guestId };
     next();
   } catch (err) {
