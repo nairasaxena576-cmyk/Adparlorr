@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Twitter, Facebook, Instagram, Linkedin, ArrowRight } from 'lucide-react';
-import { CONTACT_EMAIL, mailtoHref } from '@/data/marketingContact';
+import { Twitter, Facebook, Instagram, Linkedin, ArrowRight, MessageCircle } from 'lucide-react';
+import { mailtoHref } from '@/data/marketingContact';
 import { Logo } from '@/components/branding/Logo';
+import { useStore } from '@/store/useStore';
 
 // Items with a real destination in this app are links; items the reference
 // structure calls for that have no corresponding page (no Careers page, no
@@ -28,6 +29,18 @@ const LEGAL_ITEMS = ['Privacy Policy', 'Terms', 'Cookies'];
 
 export function MarketingFooter() {
   const [email, setEmail] = useState('');
+  const supportSettings = useStore((s) => s.supportSettings);
+  const fetchSupportSettings = useStore((s) => s.fetchSupportSettings);
+
+  // Public contact info only (telegramEnabled/telegramUrl) — the same
+  // /api/support/telegram endpoint the guest Support Chat and the Contact
+  // section's own Telegram CTA already use. Never the admin settings
+  // endpoint, never an invented URL.
+  useEffect(() => {
+    fetchSupportSettings();
+  }, [fetchSupportSettings]);
+
+  const showTelegram = supportSettings?.telegramEnabled && !!supportSettings.telegramUrl;
 
   const handleSubscribe = (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,11 +117,24 @@ export function MarketingFooter() {
           <div>
             <h4 className="text-sm font-bold text-slate-900">Contact</h4>
             <ul className="mt-4 space-y-2.5 text-sm text-slate-600">
-              <li>
-                <a href={mailtoHref('General Inquiry')} className="hover:text-pink-600">
-                  {CONTACT_EMAIL}
-                </a>
-              </li>
+              {showTelegram ? (
+                <li>
+                  <a
+                    href={supportSettings!.telegramUrl!}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 hover:text-pink-600"
+                  >
+                    <MessageCircle className="h-4 w-4" /> Contact us on Telegram
+                  </a>
+                </li>
+              ) : (
+                <li>
+                  <Link to="/support" className="inline-flex items-center gap-1.5 hover:text-pink-600">
+                    <MessageCircle className="h-4 w-4" /> Support available in chat
+                  </Link>
+                </li>
+              )}
             </ul>
           </div>
         </div>
