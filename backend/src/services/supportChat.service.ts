@@ -14,11 +14,12 @@ import {
   listLatestGuestMessagePerConversation,
 } from '../repositories/supportMessage.repository';
 
-const FAKE_ADDRESS = 'TX9z8mK2nLp4qR7vB3cF6dH1jW5yG0sA8b';
-
-// Sent once per thread, right after the first bot reply, as long as no
-// admin has taken over yet — see sendCustomerMessage below. Exported so
-// tests can assert on it without duplicating the literal string.
+// The one and only automatic message a customer/guest ever receives,
+// created exactly once per conversation on the first customer message —
+// see sendCustomerMessage below. There is no keyword-based bot reply
+// system anymore: every message after this one just waits for a human
+// admin. Exported so tests can assert on it without duplicating the
+// literal string.
 export const WAITING_NOTICE_TEXT =
   'Thanks for contacting Adparlorr Support. Please wait a moment while a support agent reviews your request and gets back to you.';
 
@@ -60,35 +61,6 @@ export function parseConversationId(conversationId: string): SupportIdentity {
   throw AppError.badRequest('Invalid conversation id.');
 }
 
-// The automatic first-responder — ported from the previous client-side-only
-// bot (src/pages/Support.tsx). Only ever used before an admin has replied
-// in a given thread (see sendCustomerMessage below); once a human takes
-// over, this is never consulted again for that conversation.
-function getBotReply(text: string, userBalance: number): string {
-  const lower = text.toLowerCase();
-
-  if (lower.includes('merged') || lower.includes('merge') || lower.includes('product issue')) {
-    const needed = Math.max(50, (100 - userBalance).toFixed(0) === '0' ? 50 : 100 - Math.floor(userBalance));
-    return `Please deposit $${needed} to clear the merged product and continue working. Here is the deposit address: ${FAKE_ADDRESS}`;
-  }
-  if (lower.includes("can't withdraw") || lower.includes('cannot withdraw') || lower.includes('withdraw')) {
-    return `You need at least $100 balance to withdraw. Your current balance is $${userBalance.toFixed(2)}. Please deposit more to reach the minimum.`;
-  }
-  if (lower.includes('deposit') || lower.includes('how') || lower.includes('pay')) {
-    return `You can deposit using USDT or BTC. Send your payment to: ${FAKE_ADDRESS}. Once confirmed, your balance will be updated automatically.`;
-  }
-  if (lower.includes('hello') || lower.includes('hi') || lower.includes('hey')) {
-    return `Hello! Welcome to Adparlorr Support. How can I help you today? If you have a merged product issue, please let me know.`;
-  }
-  if (lower.includes('tier') || lower.includes('upgrade')) {
-    return `To upgrade your tier, you need to complete more orders and increase your total deposits. Keep working and depositing to reach Silver!`;
-  }
-  if (lower.includes('balance') || lower.includes('money') || lower.includes('account')) {
-    return `Your current balance is $${userBalance.toFixed(2)}. If you need to continue working, please make a deposit to unlock your tasks.`;
-  }
-  return `I understand your concern. To resolve this issue, please make a deposit of $50 or more. Once your payment is confirmed, your account will be fully restored. Deposit address: ${FAKE_ADDRESS}`;
-}
-
 // ---- Customer / guest side ----
 
 export async function getMyMessages(identity: SupportIdentity): Promise<SupportMessageDto[]> {
@@ -98,28 +70,22 @@ export async function getMyMessages(identity: SupportIdentity): Promise<SupportM
 }
 
 export async function sendCustomerMessage(identity: SupportIdentity, text: string): Promise<SupportMessageDto[]> {
-  // A guest has no real balance — the bot's balance-mentioning replies use
-  // $0.00 for them, which is simply true (no account, no deposits).
-  let userBalance = 0;
   if (identity.type === 'user') {
     const user = await findUserById(identity.userId);
     if (!user) throw AppError.unauthorized();
-    userBalance = Number(user.balance);
   }
 
   const created: SupportMessage[] = [];
   created.push(await createSupportMessage({ identity, sender: 'CUSTOMER', text }));
 
-  // Bot auto-replies only until a human admin has engaged with this
-  // conversation — after that, the customer/guest just waits for the admin.
+  // The one-time "an agent will review this" notice — identified by the
+  // isWaitingNotice flag (never by matching message text), so it can never
+  // be duplicated. Sent once per conversation, only on the very first
+  // customer message, and only until an admin has taken over. There is no
+  // keyword-based auto-reply anymore: every message after this one is
+  // simply stored and waits for a human admin.
   const adminEngaged = await hasAdminMessageForIdentity(identity);
   if (!adminEngaged) {
-    const reply = getBotReply(text, userBalance);
-    created.push(await createSupportMessage({ identity, sender: 'BOT', text: reply }));
-
-    // The one-time "an agent will review this" notice — identified by the
-    // isWaitingNotice flag (never by matching message text), so it can
-    // never be duplicated and is unaffected by which keyword reply fired.
     const alreadyNotified = await hasWaitingNoticeForIdentity(identity);
     if (!alreadyNotified) {
       created.push(

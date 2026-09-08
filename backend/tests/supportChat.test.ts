@@ -167,11 +167,12 @@ describe('support chat — guest (unauthenticated) conversations', () => {
     expect(userCount).toBe(0);
   });
 
-  it('existing bot behavior still applies to a guest conversation', async () => {
+  it('a guest keyword message (e.g. "deposit") triggers only the waiting notice, never a keyword auto-reply', async () => {
     const guest = await startGuestAgent();
     const res = await sendGuestMessage(guest, 'How do I deposit funds?');
-    const botMsg = res.body.data.messages.find((m: { sender: string }) => m.sender === 'BOT');
-    expect(botMsg.text).toContain('USDT or BTC');
+    const botMessages = res.body.data.messages.filter((m: { sender: string }) => m.sender === 'BOT');
+    expect(botMessages).toHaveLength(1);
+    expect(botMessages[0].text).toBe(WAITING_NOTICE_TEXT);
   });
 
   it('the waiting/status notice still fires exactly once for a guest thread', async () => {
@@ -243,7 +244,7 @@ describe('support chat — guest (unauthenticated) conversations', () => {
 
   it('admin takeover silences the bot for a guest thread, same as for an authenticated customer', async () => {
     const guest = await startGuestAgent();
-    await sendGuestMessage(guest, 'hello'); // creates the one waiting notice + bot reply
+    await sendGuestMessage(guest, 'hello'); // creates the one waiting notice
     const admin = await createAdminAndLogin();
     const conversations = await getAdminConversations(admin);
     const conv = conversations.body.data.conversations.find((c: { isGuest: boolean }) => c.isGuest === true);
@@ -382,50 +383,85 @@ describe('support chat — CSRF token delivery (cross-origin frontend/backend sp
   });
 });
 
-describe('support chat — bot behavior', () => {
-  it('produces a BOT reply when no admin has taken over the thread', async () => {
+describe('support chat — no automatic keyword replies (only the one waiting notice)', () => {
+  it('produces exactly one BOT message (the waiting notice) when no admin has taken over the thread', async () => {
     const customer = await registerAndLogin();
     const res = await sendCustomerMessage(customer, 'hello');
     expect(res.status).toBe(201);
 
-    const botMsg = res.body.data.messages.find((m: { sender: string }) => m.sender === 'BOT');
-    expect(botMsg).toBeDefined();
-    expect(botMsg.text).toContain('Adparlorr Support');
+    const botMessages = res.body.data.messages.filter((m: { sender: string }) => m.sender === 'BOT');
+    expect(botMessages).toHaveLength(1);
+    expect(botMessages[0].text).toBe(WAITING_NOTICE_TEXT);
 
-    const row = await prisma.supportMessage.findUnique({ where: { id: botMsg.id } });
+    const row = await prisma.supportMessage.findUnique({ where: { id: botMessages[0].id } });
     expect(row?.sender).toBe('BOT');
     expect(row?.userId).toBe(customer.body.data.user.id);
   });
 
-  it('matches the "deposit" keyword reply from the actual service logic', async () => {
+  it('a "deposit" keyword message never triggers an automatic explanatory reply', async () => {
     const customer = await registerAndLogin();
     const res = await sendCustomerMessage(customer, 'How do I deposit funds?');
-    const botMsg = res.body.data.messages.find((m: { sender: string }) => m.sender === 'BOT');
-    expect(botMsg.text).toContain('USDT or BTC');
+    const botMessages = res.body.data.messages.filter((m: { sender: string }) => m.sender === 'BOT');
+    expect(botMessages).toHaveLength(1);
+    expect(botMessages[0].text).toBe(WAITING_NOTICE_TEXT);
   });
 
-  it('matches the "withdraw" keyword reply from the actual service logic', async () => {
+  it('a "withdraw" keyword message never triggers an automatic explanatory reply', async () => {
     const customer = await registerAndLogin();
     const res = await sendCustomerMessage(customer, "I can't withdraw my funds");
-    const botMsg = res.body.data.messages.find((m: { sender: string }) => m.sender === 'BOT');
-    expect(botMsg.text).toContain('You need at least $100 balance to withdraw');
+    const botMessages = res.body.data.messages.filter((m: { sender: string }) => m.sender === 'BOT');
+    expect(botMessages).toHaveLength(1);
+    expect(botMessages[0].text).toBe(WAITING_NOTICE_TEXT);
   });
 
-  it('matches the "tier" keyword reply from the actual service logic', async () => {
+  it('a "tier" keyword message never triggers an automatic explanatory reply', async () => {
     const customer = await registerAndLogin();
     const res = await sendCustomerMessage(customer, 'I want to upgrade my tier level');
-    const botMsg = res.body.data.messages.find((m: { sender: string }) => m.sender === 'BOT');
-    expect(botMsg.text).toContain('upgrade your tier');
+    const botMessages = res.body.data.messages.filter((m: { sender: string }) => m.sender === 'BOT');
+    expect(botMessages).toHaveLength(1);
+    expect(botMessages[0].text).toBe(WAITING_NOTICE_TEXT);
   });
 
-  it('falls back to the generic reply when no keyword matches', async () => {
+  it('a "merged product" keyword message never triggers an automatic explanatory reply', async () => {
+    const customer = await registerAndLogin();
+    const res = await sendCustomerMessage(customer, 'I have a merged product issue');
+    const botMessages = res.body.data.messages.filter((m: { sender: string }) => m.sender === 'BOT');
+    expect(botMessages).toHaveLength(1);
+    expect(botMessages[0].text).toBe(WAITING_NOTICE_TEXT);
+  });
+
+  it('a "balance"/"account" keyword message never triggers an automatic explanatory reply', async () => {
+    const customer = await registerAndLogin();
+    const res = await sendCustomerMessage(customer, 'What is my account balance?');
+    const botMessages = res.body.data.messages.filter((m: { sender: string }) => m.sender === 'BOT');
+    expect(botMessages).toHaveLength(1);
+    expect(botMessages[0].text).toBe(WAITING_NOTICE_TEXT);
+  });
+
+  it('an unrelated/generic message also never triggers an automatic explanatory reply', async () => {
     const customer = await registerAndLogin();
     const res = await sendCustomerMessage(customer, 'zzz unrelated gibberish zzz');
-    const botMsg = res.body.data.messages.find((m: { sender: string }) => m.sender === 'BOT');
-    expect(botMsg.text).toContain('I understand your concern');
+    const botMessages = res.body.data.messages.filter((m: { sender: string }) => m.sender === 'BOT');
+    expect(botMessages).toHaveLength(1);
+    expect(botMessages[0].text).toBe(WAITING_NOTICE_TEXT);
   });
 
-  it("bot replies belong to the same customer's thread", async () => {
+  it('the second, third, and further customer messages create no BOT message at all', async () => {
+    const customer = await registerAndLogin();
+    await sendCustomerMessage(customer, 'hello'); // creates the one waiting notice
+    const second = await sendCustomerMessage(customer, 'How do I deposit?');
+    expect(second.body.data.messages.filter((m: { sender: string }) => m.sender === 'BOT')).toHaveLength(0);
+    const third = await sendCustomerMessage(customer, "I can't withdraw");
+    expect(third.body.data.messages.filter((m: { sender: string }) => m.sender === 'BOT')).toHaveLength(0);
+
+    const allBotRows = await prisma.supportMessage.findMany({
+      where: { userId: customer.body.data.user.id, sender: 'BOT' },
+    });
+    expect(allBotRows).toHaveLength(1);
+    expect(allBotRows[0].text).toBe(WAITING_NOTICE_TEXT);
+  });
+
+  it("the one waiting-notice BOT message belongs to the same customer's thread", async () => {
     const customer = await registerAndLogin();
     const sendRes = await sendCustomerMessage(customer, 'hello');
     const botMsg = sendRes.body.data.messages.find((m: { sender: string }) => m.sender === 'BOT');
@@ -437,21 +473,16 @@ describe('support chat — bot behavior', () => {
 });
 
 describe('support chat — waiting/status notice', () => {
-  it('creates exactly one waiting/status BOT message alongside the normal keyword reply on the first customer message', async () => {
+  it('creates exactly one waiting/status BOT message, and nothing else, on the first customer message', async () => {
     const customer = await registerAndLogin();
     const res = await sendCustomerMessage(customer, 'How do I deposit?');
     expect(res.status).toBe(201);
 
     const botMessages = res.body.data.messages.filter((m: { sender: string }) => m.sender === 'BOT');
-    expect(botMessages).toHaveLength(2);
+    expect(botMessages).toHaveLength(1);
+    expect(botMessages[0].text).toBe(WAITING_NOTICE_TEXT);
 
-    const keywordReply = botMessages.find((m: { text: string }) => m.text !== WAITING_NOTICE_TEXT);
-    const waitingNotice = botMessages.find((m: { text: string }) => m.text === WAITING_NOTICE_TEXT);
-    expect(keywordReply).toBeDefined();
-    expect(keywordReply.text).toContain('USDT or BTC');
-    expect(waitingNotice).toBeDefined();
-
-    const row = await prisma.supportMessage.findUnique({ where: { id: waitingNotice.id } });
+    const row = await prisma.supportMessage.findUnique({ where: { id: botMessages[0].id } });
     expect(row?.sender).toBe('BOT');
     expect(row?.isWaitingNotice).toBe(true);
     expect(row?.userId).toBe(customer.body.data.user.id);
@@ -735,8 +766,11 @@ describe('support chat — admin conversation metadata', () => {
     );
     expect(conv.fullName).toBe(customer.body.data.user.fullName);
     expect(conv.email).toBe(customer.body.data.user.email);
-    expect(conv.lastMessage.sender).toBe('BOT');
-    expect(typeof conv.lastMessage.text).toBe('string');
+    // Only the FIRST customer message gets a BOT (waiting notice) reply —
+    // the second one ("latest message") gets no automatic reply at all, so
+    // it is itself the most recent message in the thread.
+    expect(conv.lastMessage.sender).toBe('CUSTOMER');
+    expect(conv.lastMessage.text).toBe('latest message');
     expect(conv.unreadCount).toBe(2);
   });
 
