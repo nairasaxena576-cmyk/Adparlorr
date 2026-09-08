@@ -11,7 +11,7 @@ export function IndustriesSection() {
             Products We Help Promote
           </h2>
           <p className="mt-4 text-base text-slate-600">
-            Adparlor works across a range of product categories — bringing the same focus on
+            Adparlorr works across a range of product categories — bringing the same focus on
             visibility, reach, and engagement to every one of them.
           </p>
         </div>

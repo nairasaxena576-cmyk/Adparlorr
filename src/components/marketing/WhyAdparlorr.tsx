@@ -26,9 +26,9 @@ export function WhyAdparlorr() {
     <section id="why" className="bg-white py-20 sm:py-28">
       <div className="mx-auto max-w-7xl px-5 sm:px-8">
         <div className="max-w-2xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-pink-600">Why Adparlor</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-pink-600">Why Adparlorr</p>
           <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
-            Why Brands Choose Adparlor
+            Why Brands Choose Adparlorr
           </h2>
         </div>
 

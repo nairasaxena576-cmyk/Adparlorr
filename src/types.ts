@@ -336,9 +336,13 @@ export interface SupportMessageDto {
 }
 
 export interface AdminSupportConversation {
-  userId: string;
-  fullName: string;
-  email: string;
+  conversationId: string;
+  isGuest: boolean;
+  // Only ever present for an authenticated customer — a guest conversation
+  // never has these (render "Unknown User" instead; never invent a value).
+  username?: string;
+  fullName?: string;
+  email?: string;
   lastMessage: { text: string; sender: SupportMessageSender; createdAt: string };
   unreadCount: number;
 }

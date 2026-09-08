@@ -35,6 +35,24 @@ function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/register" element={<Register />} />
         <Route path="/login" element={<Login />} />
+        {/* Public Support Chat — reachable without an account. The same
+            <Support /> component (and the same /api/support/messages
+            backend) an authenticated customer uses via /dashboard/support
+            below; resolveSupportIdentity on the backend transparently
+            resolves an authenticated session when there is one, and
+            establishes a guest identity otherwise. Not nested under
+            DashboardLayout, which would redirect an unauthenticated
+            visitor to /login. */}
+        <Route
+          path="/support"
+          element={
+            <div className="min-h-screen bg-neutral-50 px-4 py-8 sm:px-8">
+              <div className="mx-auto max-w-3xl">
+                <Support />
+              </div>
+            </div>
+          }
+        />
         <Route path="/dashboard" element={<DashboardLayout />}>
           <Route index element={<DashboardHome />} />
           <Route path="orders" element={<Orders />} />

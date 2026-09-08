@@ -144,7 +144,7 @@ export function MarketingFooter() {
         </div>
 
         <div className="mt-10 flex flex-col items-center gap-3 border-t border-slate-200 pt-8 sm:flex-row sm:justify-between">
-          <p className="text-xs text-slate-500">© 2026 Adparlor. All rights reserved.</p>
+          <p className="text-xs text-slate-500">© 2026 Adparlorr. All rights reserved.</p>
           <div className="flex gap-5 text-xs text-slate-400">
             {LEGAL_ITEMS.map((label) => (
               <span key={label}>{label}</span>

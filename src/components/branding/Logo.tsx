@@ -1,4 +1,4 @@
-// Single source of truth for the Adparlor brand mark + wordmark. Fixed hex
+// Single source of truth for the Adparlorr brand mark + wordmark. Fixed hex
 // colors (not Tailwind's `brand-*` teal token, which is unrelated) so the
 // mark renders identically regardless of which page's theme it sits in.
 const MARK_GRADIENT_FROM = '#ff2f6e';
@@ -22,7 +22,7 @@ export function LogoMark({ size = 28, className = '' }: LogoMarkProps) {
       height={size}
       viewBox="0 0 32 32"
       role="img"
-      aria-label="Adparlor logo mark"
+      aria-label="Adparlorr logo mark"
       className={className}
     >
       <rect width="32" height="32" rx="8" fill={`url(#${gradientId})`} />
@@ -64,7 +64,7 @@ export function Logo({ variant = 'dark', size = 'md', iconOnly = false, classNam
   return (
     <span className={`inline-flex items-center ${gap} ${className}`}>
       <LogoMark size={mark} />
-      {!iconOnly && <span className={`${text} font-extrabold tracking-tight ${textColor}`}>Adparlor</span>}
+      {!iconOnly && <span className={`${text} font-extrabold tracking-tight ${textColor}`}>Adparlorr</span>}
     </span>
   );
 }

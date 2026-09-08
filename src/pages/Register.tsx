@@ -64,7 +64,7 @@ export function Register() {
             Start earning today
           </h1>
           <p className="mt-4 text-ink-300">
-            Create your free Adparlor account and get instant access to paid tasks.
+            Create your free Adparlorr account and get instant access to paid tasks.
           </p>
           <ul className="mt-8 space-y-3">
             {['No upfront fees', 'Work from anywhere', 'Daily payouts', 'Referral bonuses'].map((item) => (

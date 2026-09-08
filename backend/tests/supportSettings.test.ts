@@ -11,9 +11,11 @@ describe('support settings (Telegram)', () => {
     expect(res.body.data.telegramUrl).toBeNull();
   });
 
-  it('requires authentication to read the config', async () => {
+  it('is readable without authentication — an unauthenticated Support Chat guest sees the same Telegram CTA', async () => {
     const res = await request(app).get('/api/support/telegram');
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(200);
+    expect(res.body.data.telegramEnabled).toBe(false);
+    expect(res.body.data.telegramUrl).toBeNull();
   });
 
   it('rejects a non-admin from reading or writing admin support settings', async () => {
@@ -62,6 +64,24 @@ describe('support settings (Telegram)', () => {
       .set('X-CSRF-Token', admin.csrfToken)
       .send({ telegramUsername: 'a', telegramEnabled: true });
     expect(res.status).toBe(400);
+  });
+
+  it('never exposes the raw configured telegramUsername on the public /telegram endpoint', async () => {
+    const admin = await createAdminAndLogin();
+    const adminRes = await admin.agent
+      .put('/api/admin/support-settings')
+      .set('X-CSRF-Token', admin.csrfToken)
+      .send({ telegramUsername: 'RealAdminHandle', telegramEnabled: true });
+    // The admin endpoint itself legitimately returns the raw username — an
+    // admin needs to see/edit what they configured.
+    expect(adminRes.body.data.telegramUsername).toBe('RealAdminHandle');
+
+    const guestRes = await request(app).get('/api/support/telegram');
+    expect(guestRes.status).toBe(200);
+    expect(guestRes.body.data.telegramUrl).toBe('https://t.me/RealAdminHandle');
+    // The public shape only ever carries telegramEnabled + telegramUrl.
+    expect(guestRes.body.data.telegramUsername).toBeUndefined();
+    expect(Object.keys(guestRes.body.data).sort()).toEqual(['telegramEnabled', 'telegramUrl']);
   });
 
   it('hides the Telegram button (no url) once disabled, even with a saved username', async () => {

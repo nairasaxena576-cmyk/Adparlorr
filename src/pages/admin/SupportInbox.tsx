@@ -111,7 +111,7 @@ function InboxView() {
   const sendAdminSupportReply = useStore((s) => s.sendAdminSupportReply);
   const showToast = useToast();
 
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -125,12 +125,15 @@ function InboxView() {
   }, []);
 
   useEffect(() => {
-    if (!selectedUserId) return;
-    fetchAdminSupportConversationMessages(selectedUserId);
-    const interval = setInterval(() => fetchAdminSupportConversationMessages(selectedUserId), MESSAGES_POLL_MS);
+    if (!selectedConversationId) return;
+    fetchAdminSupportConversationMessages(selectedConversationId);
+    const interval = setInterval(
+      () => fetchAdminSupportConversationMessages(selectedConversationId),
+      MESSAGES_POLL_MS
+    );
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedUserId]);
+  }, [selectedConversationId]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -141,21 +144,27 @@ function InboxView() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return conversations;
+    // A guest has no fullName/email/username to search by — "Unknown User"
+    // conversations simply never match a text search, which is correct
+    // (there's no real identity behind them to find).
     return conversations.filter(
-      (c) => c.fullName.toLowerCase().includes(q) || c.email.toLowerCase().includes(q)
+      (c) =>
+        (c.fullName?.toLowerCase().includes(q) ?? false) ||
+        (c.email?.toLowerCase().includes(q) ?? false) ||
+        (c.username?.toLowerCase().includes(q) ?? false)
     );
   }, [conversations, search]);
 
-  const selected = conversations.find((c) => c.userId === selectedUserId) ?? null;
+  const selected = conversations.find((c) => c.conversationId === selectedConversationId) ?? null;
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedUserId) return;
+    if (!selectedConversationId) return;
     const text = input.trim();
     if (!text || sending) return;
     setInput('');
     setSending(true);
-    const result = await sendAdminSupportReply(selectedUserId, text);
+    const result = await sendAdminSupportReply(selectedConversationId, text);
     setSending(false);
     if (!result.ok) {
       showToast(result.error || 'Failed to send reply.', 'error');
@@ -192,11 +201,11 @@ function InboxView() {
             <p className="px-4 py-8 text-center text-sm text-slate-500">No conversations yet.</p>
           ) : (
             filtered.map((c) => {
-              const isSelected = c.userId === selectedUserId;
+              const isSelected = c.conversationId === selectedConversationId;
               return (
                 <button
-                  key={c.userId}
-                  onClick={() => setSelectedUserId(c.userId)}
+                  key={c.conversationId}
+                  onClick={() => setSelectedConversationId(c.conversationId)}
                   className={`flex w-full items-start gap-3 border-l-4 px-4 py-3 text-left transition ${
                     isSelected ? 'border-blue-500 bg-blue-900/30' : 'border-transparent hover:bg-white/5'
                   }`}
@@ -212,8 +221,12 @@ function InboxView() {
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold text-white">{c.fullName}</p>
-                    <p className="truncate text-xs text-slate-400">ID: {c.userId.slice(0, 8)}</p>
+                    <p className="truncate text-sm font-bold text-white">
+                      {c.isGuest ? 'Unknown User' : c.fullName}
+                    </p>
+                    <p className="truncate text-xs text-slate-400">
+                      {c.isGuest ? 'Guest visitor (not signed in)' : `@${c.username}`}
+                    </p>
                     <span className="mt-1 inline-block max-w-full truncate rounded bg-amber-400 px-2 py-0.5 text-xs font-medium text-slate-900">
                       {c.lastMessage.text}
                     </span>
@@ -235,8 +248,10 @@ function InboxView() {
           <>
             <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
               <div>
-                <p className="text-lg font-bold text-white">{selected.fullName}</p>
-                <p className="text-xs text-slate-400">ID : {selected.userId.slice(0, 8)}</p>
+                <p className="text-lg font-bold text-white">{selected.isGuest ? 'Unknown User' : selected.fullName}</p>
+                <p className="text-xs text-slate-400">
+                  {selected.isGuest ? 'Guest visitor (not signed in)' : `@${selected.username}`}
+                </p>
               </div>
             </div>
 

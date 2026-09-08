@@ -1,20 +1,25 @@
 import { Router } from 'express';
 import { getTelegramConfig, getMySupportMessages, postMySupportMessage } from '../controllers/support.controller';
-import { requireAuth } from '../middleware/requireAuth';
+import { resolveSupportIdentity } from '../middleware/supportIdentity';
 import { verifyCsrf } from '../middleware/csrf';
 import { validate } from '../middleware/validate';
 import { sendSupportMessageSchema } from '../schemas/support.schema';
 
 export const supportRouter = Router();
 
-// Read-only for any authenticated user (customer or admin). Writing this
-// configuration is an admin-only concern, handled under /api/admin.
-supportRouter.get('/telegram', requireAuth, getTelegramConfig);
+// Public, non-sensitive global config (just a toggle + URL) — an
+// unauthenticated Support Chat visitor sees the same "Prefer Telegram?" CTA
+// an authenticated customer does.
+supportRouter.get('/telegram', getTelegramConfig);
 
-supportRouter.get('/messages', requireAuth, getMySupportMessages);
+// resolveSupportIdentity (not requireAuth) — Support Chat must work for an
+// unauthenticated visitor too. It resolves the real authenticated session
+// when there is one, and otherwise establishes/reuses a guest identity; it
+// never rejects the request the way requireAuth does.
+supportRouter.get('/messages', resolveSupportIdentity, getMySupportMessages);
 supportRouter.post(
   '/messages',
-  requireAuth,
+  resolveSupportIdentity,
   verifyCsrf,
   validate({ body: sendSupportMessageSchema }),
   postMySupportMessage

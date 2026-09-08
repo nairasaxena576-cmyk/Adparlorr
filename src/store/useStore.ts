@@ -133,8 +133,8 @@ interface AppState {
   sendSupportMessage: (text: string) => Promise<ActionResult>;
 
   fetchAdminSupportConversations: () => Promise<void>;
-  fetchAdminSupportConversationMessages: (userId: string) => Promise<void>;
-  sendAdminSupportReply: (userId: string, text: string) => Promise<ActionResult>;
+  fetchAdminSupportConversationMessages: (conversationId: string) => Promise<void>;
+  sendAdminSupportReply: (conversationId: string, text: string) => Promise<ActionResult>;
 
   fetchAdminCryptoAssets: () => Promise<void>;
   updateAdminCryptoAsset: (
@@ -484,17 +484,17 @@ export const useStore = create<AppState>()((set, get) => ({
     set({ adminSupportConversations: data.conversations });
   },
 
-  fetchAdminSupportConversationMessages: async (userId) => {
+  fetchAdminSupportConversationMessages: async (conversationId) => {
     const { data } = await api.get<{ messages: SupportMessageDto[] }>(
-      `/api/admin/support/conversations/${userId}/messages`
+      `/api/admin/support/conversations/${encodeURIComponent(conversationId)}/messages`
     );
     set({ adminSupportMessages: data.messages });
   },
 
-  sendAdminSupportReply: async (userId, text) => {
+  sendAdminSupportReply: async (conversationId, text) => {
     try {
       const { data } = await api.post<{ message: SupportMessageDto }>(
-        `/api/admin/support/conversations/${userId}/messages`,
+        `/api/admin/support/conversations/${encodeURIComponent(conversationId)}/messages`,
         { text }
       );
       set((state) => ({ adminSupportMessages: [...state.adminSupportMessages, data.message] }));

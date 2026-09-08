@@ -27,6 +27,21 @@ export async function getSupportSettings(): Promise<SupportSettingsDto> {
   return toDto(row);
 }
 
+export interface PublicSupportContactDto {
+  telegramEnabled: boolean;
+  telegramUrl: string | null;
+}
+
+// The only shape ever exposed to an unauthenticated visitor (public Contact
+// section, guest/customer Support Chat) — deliberately omits the raw
+// telegramUsername, which is an admin-configuration detail, not public
+// contact information. See getSupportSettings() above for the full DTO used
+// by the admin settings endpoint only.
+export async function getPublicSupportContact(): Promise<PublicSupportContactDto> {
+  const { telegramEnabled, telegramUrl } = await getSupportSettings();
+  return { telegramEnabled, telegramUrl };
+}
+
 export interface UpdateSupportSettingsInput {
   telegramUsername: string | null;
   telegramEnabled: boolean;

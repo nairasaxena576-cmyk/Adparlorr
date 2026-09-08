@@ -12,7 +12,7 @@ export function HowItWorks() {
         <div className="mx-auto max-w-2xl text-center">
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-pink-600">Process</p>
           <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
-            How Adparlor Works
+            How Adparlorr Works
           </h2>
         </div>
 

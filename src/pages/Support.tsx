@@ -58,7 +58,7 @@ export function Support() {
             <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white bg-green-500" />
           </div>
           <div>
-            <p className="text-sm font-bold text-ink-900">Adparlor Support</p>
+            <p className="text-sm font-bold text-ink-900">Adparlorr Support</p>
             <p className="text-xs text-green-600">Online now</p>
           </div>
         </div>

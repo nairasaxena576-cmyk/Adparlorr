@@ -58,6 +58,10 @@ async function clearPerTestData() {
   await prisma.trainingCourse.deleteMany();
   // Cascades away TrainingTaskSubmission rows.
   await prisma.trainingTask.deleteMany();
+  // Explicit, not left to User's onDelete: Cascade below — a guest
+  // conversation's SupportMessage rows have no userId at all, so deleting
+  // User would never reach them.
+  await prisma.supportMessage.deleteMany();
   await prisma.user.deleteMany();
   await prisma.supportSettings.deleteMany();
 }

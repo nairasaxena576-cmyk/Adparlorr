@@ -34,11 +34,11 @@ export function MarketingNavbar() {
             </a>
           ))}
           {/* Real route, not a hash anchor — the one customer-facing Support
-              entry. /dashboard/support is itself the existing authenticated
-              Support Chat route; DashboardLayout already redirects an
-              unauthenticated visitor to /login, so no extra auth check is
-              needed here. */}
-          <Link to="/dashboard/support" className="text-sm font-medium text-slate-600 transition hover:text-slate-900">
+              entry. /support always opens Support Chat directly, for a
+              logged-in customer or an unauthenticated guest alike — see
+              App.tsx's public /support route and the backend's
+              resolveSupportIdentity middleware. Never redirects to /login. */}
+          <Link to="/support" className="text-sm font-medium text-slate-600 transition hover:text-slate-900">
             Support
           </Link>
         </nav>
@@ -79,7 +79,7 @@ export function MarketingNavbar() {
               </a>
             ))}
             <Link
-              to="/dashboard/support"
+              to="/support"
               onClick={() => setOpen(false)}
               className="rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >

@@ -13,14 +13,14 @@ export const getConversations = asyncHandler(async (_req: Request, res: Response
 });
 
 export const getConversationMessages = asyncHandler(async (req: Request, res: Response) => {
-  const { userId } = req.params as { userId: string };
-  const messages = await getConversationForAdmin(userId);
+  const { conversationId } = req.params as { conversationId: string };
+  const messages = await getConversationForAdmin(conversationId);
   ok(res, { messages });
 });
 
 export const postConversationReply = asyncHandler(async (req: Request, res: Response) => {
-  const { userId } = req.params as { userId: string };
+  const { conversationId } = req.params as { conversationId: string };
   const { text } = req.body as { text: string };
-  const message = await sendAdminReply(userId, text);
+  const message = await sendAdminReply(conversationId, text);
   ok(res, { message }, 201);
 });

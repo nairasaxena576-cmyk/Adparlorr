@@ -256,10 +256,10 @@ model SupportSettings {
 }
 
 // Real, persisted customer<->admin support chat (one thread per customer,
-// identified by userId — no separate Conversation table needed). BOT rows
-// are the automatic canned first-response (see supportChat.service.ts);
-// once an ADMIN row exists for a user, the bot no longer auto-replies for
-// that customer — a human has taken over the thread.
+// identified by userId, or by guestId for an unauthenticated visitor — no
+// separate Conversation table needed). BOT rows are the automatic canned
+// first-response (see supportChat.service.ts); once an ADMIN row exists for
+// a thread, the bot no longer auto-replies for it — a human has taken over.
 enum SupportSender {
   CUSTOMER
   BOT
@@ -268,8 +268,15 @@ enum SupportSender {
 
 model SupportMessage {
   id             String        @id @default(uuid())
-  userId         String
-  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Exactly one of userId/guestId is ever set, decided server-side by
+  // resolveSupportIdentity (see middleware/supportIdentity.ts) — never by a
+  // client-supplied value. guestId identifies an unauthenticated visitor's
+  // conversation via an unguessable, httpOnly-cookie-held random token; it
+  // never corresponds to any User row (no account is ever created for a
+  // guest).
+  userId         String?
+  user           User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guestId        String?
   sender         SupportSender
   text           String
   // Read-receipt flags — readByAdmin drives the admin inbox's unread badge;
@@ -286,6 +293,7 @@ model SupportMessage {
   createdAt      DateTime      @default(now())
 
   @@index([userId, createdAt])
+  @@index([guestId, createdAt])
 }
 
 // ---------------------------------------------------------------------------
