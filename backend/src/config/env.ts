@@ -10,6 +10,22 @@ const booleanFromEnv = (defaultValue: boolean) =>
     .optional()
     .transform((v) => (v === undefined || v === '' ? defaultValue : v === 'true'));
 
+// CORS_ORIGIN accepts a comma-separated list of exact allowed origins (e.g.
+// "https://adparlorr.com,https://test.adparlorr.com") so both the
+// production frontend and a Namecheap test frontend can be allowed at
+// once, without weakening this to origin: '*'. Trimmed and filtered of
+// empty entries so trailing commas/stray whitespace are harmless. A single
+// value (no comma) parses to a one-element array, preserving prior
+// single-origin behavior exactly. Exported so config/cors.ts's actual CORS
+// middleware reuses this exact parsing (single source of truth) rather
+// than re-implementing it.
+export function parseCorsOrigins(raw: string): string[] {
+  return raw
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+}
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(4000),
@@ -112,7 +128,14 @@ const validatedSchema = envSchema.superRefine((data, ctx) => {
     });
   }
 
-  if (data.CORS_ORIGIN === '*') {
+  const corsOrigins = parseCorsOrigins(data.CORS_ORIGIN);
+  if (corsOrigins.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['CORS_ORIGIN'],
+      message: 'CORS_ORIGIN must contain at least one non-empty origin.',
+    });
+  } else if (corsOrigins.includes('*')) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['CORS_ORIGIN'],
