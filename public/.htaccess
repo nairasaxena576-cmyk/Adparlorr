@@ -1,0 +1,12 @@
+# Namecheap/cPanel (Apache) equivalent of netlify.toml's SPA redirect.
+# React Router (BrowserRouter, no basename — see src/main.tsx) needs every
+# non-file path served index.html so client-side routes (e.g. /dashboard,
+# /admin) don't 404 on a hard refresh or direct link.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  RewriteRule ^index\.html$ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . /index.html [L]
+</IfModule>
