@@ -15,6 +15,7 @@ import {
   postResolveNegativeBalance,
   postGrantTier,
   postSetTestBalances,
+  postSetTestWorkbenchProgress,
 } from '../controllers/admin.controller';
 import { requireAuth } from '../middleware/requireAuth';
 import { requireRole } from '../middleware/requireRole';
@@ -30,6 +31,8 @@ import {
   grantTierBodySchema,
   setTestBalancesParamsSchema,
   setTestBalancesBodySchema,
+  setTestWorkbenchProgressParamsSchema,
+  setTestWorkbenchProgressBodySchema,
 } from '../schemas/admin.schema';
 import { updateSupportSettingsSchema } from '../schemas/supportSettings.schema';
 import { cryptoAssetCodeParamsSchema, updateCryptoAssetBodySchema } from '../schemas/cryptoAsset.schema';
@@ -98,6 +101,15 @@ adminRouter.post(
   verifyCsrf,
   validate({ params: setTestBalancesParamsSchema, body: setTestBalancesBodySchema }),
   postSetTestBalances
+);
+// QA/test-only Starting-page progress display override (see
+// admin.service.ts's setUserTestWorkbenchProgress) — never touches real
+// completedOrders or Workbench gating.
+adminRouter.post(
+  '/users/:userId/set-test-progress',
+  verifyCsrf,
+  validate({ params: setTestWorkbenchProgressParamsSchema, body: setTestWorkbenchProgressBodySchema }),
+  postSetTestWorkbenchProgress
 );
 
 adminRouter.get('/deposits', validate({ query: listDepositsQuerySchema }), getAdminDeposits);

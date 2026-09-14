@@ -30,6 +30,15 @@ model User {
   // specific QA/test account can be put into a "frozen balance" display
   // state without a per-account code branch anywhere.
   frozenBalance       Decimal          @default(0) @db.Decimal(12, 2)
+  // Admin/QA-only DISPLAY overrides for the Starting page's progress
+  // fraction/bar (Orders.tsx) — never read by getWorkbenchState()'s real
+  // status/gating computation, never written by any real order submission.
+  // Both default to null (unset) for every user; only ever set together via
+  // admin.service.ts's setUserTestWorkbenchProgress, for exactly one
+  // account at a time. Distinct from `completedOrders` below, which remains
+  // the sole driver of real Workbench eligibility/gating.
+  testWorkbenchProgressCompleted Int?
+  testWorkbenchProgressTotal     Int?
   // Demo/simulation-only ledger for the 45-product workbench — entirely
   // separate from `balance`, which is the real Wallet/crypto-deposit
   // balance. Workbench commission/price math reads and writes only this

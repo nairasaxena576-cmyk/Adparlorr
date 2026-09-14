@@ -44,3 +44,19 @@ export const setTestBalancesBodySchema = z
   .refine((data) => data.balance !== undefined || data.frozenBalance !== undefined, {
     message: 'At least one of balance or frozenBalance must be provided.',
   });
+
+export const setTestWorkbenchProgressParamsSchema = z.object({
+  userId: z.string().uuid('A valid userId is required.'),
+});
+
+// DISPLAY-only override for the Starting page's progress fraction — see
+// admin.service.ts's setUserTestWorkbenchProgress. `null` for both clears
+// the override back to the real completedOrders-driven progress; setting
+// one requires setting both together, so the fraction shown is never a
+// half-set, inconsistent pair.
+export const setTestWorkbenchProgressBodySchema = z.object({
+  completed: z.union([z.coerce.number().int().nonnegative(), z.null()]),
+  total: z.union([z.coerce.number().int().positive(), z.null()]),
+}).refine((data) => (data.completed === null) === (data.total === null), {
+  message: 'completed and total must both be null (clear) or both be numbers (set) together.',
+});

@@ -12,6 +12,7 @@ import {
   resolveTrainingNegativeBalance,
   grantTierForUser,
   setUserTestBalances,
+  setUserTestWorkbenchProgress,
 } from '../services/admin.service';
 import { getSupportSettings, updateSupportSettings } from '../services/supportSettings.service';
 import { listAssetsForAdmin, updateCryptoAsset } from '../services/cryptoAsset.service';
@@ -66,6 +67,13 @@ export const postSetTestBalances = asyncHandler(async (req: Request, res: Respon
   const { userId } = req.params as { userId: string };
   const { balance, frozenBalance } = req.body as { balance?: number; frozenBalance?: number };
   const user = await setUserTestBalances(userId, { balance, frozenBalance }, req.user!.id);
+  ok(res, { user });
+});
+
+export const postSetTestWorkbenchProgress = asyncHandler(async (req: Request, res: Response) => {
+  const { userId } = req.params as { userId: string };
+  const { completed, total } = req.body as { completed: number | null; total: number | null };
+  const user = await setUserTestWorkbenchProgress(userId, { completed, total }, req.user!.id);
   ok(res, { user });
 });
 

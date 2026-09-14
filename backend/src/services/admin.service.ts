@@ -285,6 +285,47 @@ export async function setUserTestBalances(
   return toSafeUser(updated);
 }
 
+export interface SetTestWorkbenchProgressInput {
+  completed: number | null;
+  total: number | null;
+}
+
+// Admin/QA-only: sets (or, passing null for both, clears) a DISPLAY-only
+// override for the Starting page's progress fraction/bar (Orders.tsx) —
+// entirely separate from `completedOrders`, which this never touches, and
+// from getWorkbenchState()'s real status/gating computation (NOT_READY /
+// TIER_LOCKED / MERGE / NORMAL / COMPLETED, currentProduct, mergeBundle),
+// which also never reads these two fields. Exists so one specific test
+// account's Starting page can visually show an arbitrary "completed/total"
+// state for QA without creating any real order-unlock/financial effect —
+// the account's actual Submit flow keeps operating on its real,
+// unaffected completedOrders. Same audit-Transaction convention as
+// setUserTestBalances above.
+export async function setUserTestWorkbenchProgress(
+  userId: string,
+  input: SetTestWorkbenchProgressInput,
+  adminId: string
+): Promise<SafeUser> {
+  const user = await findUserById(userId);
+  if (!user) throw AppError.notFound('User not found.');
+
+  const admin = await findUserById(adminId);
+  const before = `${user.testWorkbenchProgressCompleted ?? 'null'}/${user.testWorkbenchProgressTotal ?? 'null'}`;
+  const after = `${input.completed ?? 'null'}/${input.total ?? 'null'}`;
+  const description = `Admin QA/test Starting-page progress override (${before} -> ${after}) — set by admin ${admin?.fullName ?? adminId}.`;
+
+  const updated = await prisma.$transaction(async (tx) => {
+    await createTransaction({ userId, type: 'ADMIN_CREDIT', amount: 0, status: 'COMPLETED', description }, tx);
+    return updateUser(
+      userId,
+      { testWorkbenchProgressCompleted: input.completed, testWorkbenchProgressTotal: input.total },
+      tx
+    );
+  });
+
+  return toSafeUser(updated);
+}
+
 export async function resetUserTasksAdmin(userId: string): Promise<SafeUser> {
   const user = await findUserById(userId);
   if (!user) throw AppError.notFound('User not found.');

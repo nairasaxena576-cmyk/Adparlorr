@@ -25,6 +25,11 @@ export interface SafeUser {
   // every account an admin hasn't explicitly set via
   // admin.service.ts's setUserTestBalances.
   frozenBalance: number;
+  // Admin/QA-only DISPLAY-only overrides for the Starting page's progress
+  // fraction (see schema.prisma's doc comment) — null for every account an
+  // admin hasn't explicitly set. Never read by real Workbench gating.
+  testWorkbenchProgressCompleted: number | null;
+  testWorkbenchProgressTotal: number | null;
   workbenchBalance: number;
   totalEarnings: number;
   totalDeposits: number;
@@ -48,6 +53,8 @@ export function toSafeUser(user: User): SafeUser {
     referralCode: user.referralCode,
     balance: Number(user.balance),
     frozenBalance: Number(user.frozenBalance),
+    testWorkbenchProgressCompleted: user.testWorkbenchProgressCompleted,
+    testWorkbenchProgressTotal: user.testWorkbenchProgressTotal,
     workbenchBalance: Number(user.workbenchBalance),
     totalEarnings: Number(user.totalEarnings),
     totalDeposits: Number(user.totalDeposits),

@@ -10,7 +10,6 @@ import {
   Package,
   Sparkles,
   TrendingUp,
-  Wallet,
 } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { useToast } from '@/components/Toast';
@@ -53,6 +52,18 @@ export function Orders() {
   }
 
   const { progress, status } = workbench;
+  // Admin/QA-only DISPLAY override for this fraction/bar only — never
+  // affects `progress` itself, `status`, currentProduct, mergeBundle, or
+  // the Submit handler below, all of which keep using the user's real,
+  // unaffected completedOrders. heroLabel (Start vs Continue) is also left
+  // reading the real progress.completed, so "Start" still shows correctly
+  // for an account with 0 real completed orders even while this override
+  // is active. Null for every account an admin hasn't explicitly set (see
+  // admin.service.ts's setUserTestWorkbenchProgress).
+  const displayProgress =
+    user.testWorkbenchProgressCompleted !== null && user.testWorkbenchProgressTotal !== null
+      ? { completed: user.testWorkbenchProgressCompleted, total: user.testWorkbenchProgressTotal }
+      : progress;
   const heroLabel =
     status === 'COMPLETED'
       ? 'Completed'
@@ -77,7 +88,7 @@ export function Orders() {
               </span>
             </div>
             <p className="mt-1 text-3xl font-extrabold text-ink-900">
-              {progress.completed} <span className="text-ink-400">/</span> {progress.total}
+              {displayProgress.completed} <span className="text-ink-400">/</span> {displayProgress.total}
             </p>
           </div>
           <a
@@ -88,52 +99,27 @@ export function Orders() {
                 : ''
             }`}
           >
-            {heroLabel} ({progress.completed}/{progress.total}) <ArrowRight className="h-4 w-4" />
+            {heroLabel} ({displayProgress.completed}/{displayProgress.total}) <ArrowRight className="h-4 w-4" />
           </a>
         </div>
         <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-pink-100">
           <div
             className="h-full rounded-full bg-gradient-to-r from-brand-500 to-brand-400 transition-all"
-            style={{ width: `${progress.total > 0 ? (progress.completed / progress.total) * 100 : 0}%` }}
+            style={{ width: `${displayProgress.total > 0 ? (displayProgress.completed / displayProgress.total) * 100 : 0}%` }}
           />
         </div>
       </div>
 
-      {/* Commission / Balance cards */}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="card-c">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-ink-500">Today's Simulated Commission</p>
-            <div className="grid h-10 w-10 place-items-center rounded-xl bg-brand-500/15">
-              <TrendingUp className="h-5 w-5 text-brand-500" />
-            </div>
+      {/* Commission card */}
+      <div className="card-c">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-ink-500">Today's Simulated Commission</p>
+          <div className="grid h-10 w-10 place-items-center rounded-xl bg-brand-500/15">
+            <TrendingUp className="h-5 w-5 text-brand-500" />
           </div>
-          <p className="mt-2 text-2xl font-extrabold text-brand-600">${workbench.todaysCommission.toFixed(2)}</p>
-          <p className="mt-1 text-xs text-ink-400">Simulated commission earned from completed products today.</p>
         </div>
-
-        <div className="card-c">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-ink-500">Demo Working Balance</p>
-            <div
-              className={`grid h-10 w-10 place-items-center rounded-xl ${
-                workbench.workbenchBalance < 0 ? 'bg-red-500/15' : 'bg-sky-500/15'
-              }`}
-            >
-              <Wallet className={`h-5 w-5 ${workbench.workbenchBalance < 0 ? 'text-red-500' : 'text-sky-500'}`} />
-            </div>
-          </div>
-          <p
-            className={`mt-2 text-2xl font-extrabold ${
-              workbench.workbenchBalance < 0 ? 'text-red-600' : 'text-ink-900'
-            }`}
-          >
-            {workbench.workbenchBalance < 0 ? '-' : ''}${Math.abs(workbench.workbenchBalance).toFixed(2)}
-          </p>
-          <p className="mt-1 text-xs text-ink-400">
-            Simulated balance for this workbench only — separate from your real Wallet balance.
-          </p>
-        </div>
+        <p className="mt-2 text-2xl font-extrabold text-brand-600">${workbench.todaysCommission.toFixed(2)}</p>
+        <p className="mt-1 text-xs text-ink-400">Simulated commission earned from completed products today.</p>
       </div>
 
       {/* Required/Frozen balance — purely data-driven, never rendered for a

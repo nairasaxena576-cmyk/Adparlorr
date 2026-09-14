@@ -14,6 +14,12 @@ export interface User {
   // explicitly set. See Orders.tsx, which only renders its "Frozen
   // Balance" block when this is non-zero.
   frozenBalance: number;
+  // Admin/QA-only DISPLAY overrides for the Starting page's progress
+  // fraction (Orders.tsx) — null for every account an admin hasn't
+  // explicitly set. Never affects real Workbench eligibility/gating,
+  // which always uses completedOrders below.
+  testWorkbenchProgressCompleted: number | null;
+  testWorkbenchProgressTotal: number | null;
   // Demo/simulation-only workbench ledger — entirely separate from the
   // real `balance` above. Never affected by real deposits.
   workbenchBalance: number;

@@ -16,6 +16,13 @@ export function DashboardHome() {
   const stats = [
     { label: 'Total Orders', value: user.completedOrders, Icon: ShoppingBag, color: 'text-sky-400', bg: 'bg-sky-500/15' },
     { label: 'Total Earnings', value: `$${user.totalEarnings.toFixed(2)}`, Icon: DollarSign, color: 'text-brand-400', bg: 'bg-brand-500/15' },
+    // Admin/QA-only display value — 0 for every account an admin hasn't
+    // explicitly set (see types.ts's User.frozenBalance doc comment), so
+    // this card is omitted entirely for every normal user and the grid
+    // stays exactly as it was for them.
+    ...(user.frozenBalance !== 0
+      ? [{ label: 'Frozen Balance', value: `$${user.frozenBalance.toFixed(2)}`, Icon: Lock, color: 'text-red-400', bg: 'bg-red-500/15' }]
+      : []),
     { label: 'Available Balance', value: `$${user.balance.toFixed(2)}`, Icon: Wallet, color: 'text-amber-400', bg: 'bg-amber-500/15' },
   ];
 

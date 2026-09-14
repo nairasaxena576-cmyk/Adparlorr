@@ -23,6 +23,7 @@ export function Admin() {
   const adminResetUserTasks = useStore((s) => s.adminResetUserTasks);
   const adminGrantTier = useStore((s) => s.adminGrantTier);
   const adminSetTestBalances = useStore((s) => s.adminSetTestBalances);
+  const adminSetTestWorkbenchProgress = useStore((s) => s.adminSetTestWorkbenchProgress);
   const supportSettings = useStore((s) => s.supportSettings);
   const fetchAdminSupportSettings = useStore((s) => s.fetchAdminSupportSettings);
   const updateAdminSupportSettings = useStore((s) => s.updateAdminSupportSettings);
@@ -51,6 +52,11 @@ export function Admin() {
   // deliberately filled in and submitted.
   const [testBalanceInputs, setTestBalanceInputs] = useState<Record<string, { balance: string; frozenBalance: string }>>({});
   const [busyTestBalanceUserId, setBusyTestBalanceUserId] = useState<string | null>(null);
+  // QA/test-only Starting-page progress override inputs (see
+  // admin.service.ts's setUserTestWorkbenchProgress) — generic per-row,
+  // blank until an admin fills both in and submits for this specific row.
+  const [testProgressInputs, setTestProgressInputs] = useState<Record<string, { completed: string; total: string }>>({});
+  const [busyTestProgressUserId, setBusyTestProgressUserId] = useState<string | null>(null);
 
   const [telegramUsernameInput, setTelegramUsernameInput] = useState('');
   const [telegramEnabledInput, setTelegramEnabledInput] = useState(false);
@@ -252,6 +258,29 @@ export function Admin() {
     }
     showToast('Test balances updated.', 'success');
     setTestBalanceInputs((prev) => ({ ...prev, [userId]: { balance: '', frozenBalance: '' } }));
+  };
+
+  const handleSetTestProgress = async (userId: string) => {
+    const input = testProgressInputs[userId] ?? { completed: '', total: '' };
+    if (input.completed.trim() === '' || input.total.trim() === '') {
+      showToast('Enter both completed and total task counts.', 'error');
+      return;
+    }
+    const completed = parseInt(input.completed, 10);
+    const total = parseInt(input.total, 10);
+    if (Number.isNaN(completed) || Number.isNaN(total) || completed < 0 || total <= 0) {
+      showToast('Enter valid whole numbers (total must be greater than zero).', 'error');
+      return;
+    }
+    setBusyTestProgressUserId(userId);
+    const result = await adminSetTestWorkbenchProgress(userId, { completed, total });
+    setBusyTestProgressUserId(null);
+    if (!result.ok) {
+      showToast(result.error || 'Failed to set test progress.', 'error');
+      return;
+    }
+    showToast('Test Starting-page progress updated.', 'success');
+    setTestProgressInputs((prev) => ({ ...prev, [userId]: { completed: '', total: '' } }));
   };
 
   if (authStatus === 'idle' || authStatus === 'loading') return <LoadingScreen />;
@@ -459,6 +488,46 @@ export function Admin() {
                             disabled={busyTestBalanceUserId === u.id}
                             className="rounded bg-ink-700 px-2 py-1 text-xs font-semibold text-ink-200 transition hover:bg-red-500/20 hover:text-red-400 disabled:opacity-60"
                             title="Set QA/test balance + frozen balance (admin-only, this user only)"
+                          >
+                            Set
+                          </button>
+                        </div>
+                        {/* QA/test-only Starting-page progress override —
+                            generic per-row, works for any user; blank
+                            until an admin fills both in and submits for
+                            this specific row. */}
+                        <div className="mt-1.5 flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            placeholder="Completed"
+                            value={testProgressInputs[u.id]?.completed ?? ''}
+                            onChange={(e) =>
+                              setTestProgressInputs((prev) => ({
+                                ...prev,
+                                [u.id]: { completed: e.target.value, total: prev[u.id]?.total ?? '' },
+                              }))
+                            }
+                            disabled={busyTestProgressUserId === u.id}
+                            className="w-16 rounded border border-ink-600 bg-ink-800 px-1.5 py-1 text-xs text-white outline-none focus:border-brand-500 disabled:opacity-60"
+                          />
+                          <input
+                            type="number"
+                            placeholder="Total"
+                            value={testProgressInputs[u.id]?.total ?? ''}
+                            onChange={(e) =>
+                              setTestProgressInputs((prev) => ({
+                                ...prev,
+                                [u.id]: { completed: prev[u.id]?.completed ?? '', total: e.target.value },
+                              }))
+                            }
+                            disabled={busyTestProgressUserId === u.id}
+                            className="w-16 rounded border border-ink-600 bg-ink-800 px-1.5 py-1 text-xs text-white outline-none focus:border-brand-500 disabled:opacity-60"
+                          />
+                          <button
+                            onClick={() => handleSetTestProgress(u.id)}
+                            disabled={busyTestProgressUserId === u.id}
+                            className="rounded bg-ink-700 px-2 py-1 text-xs font-semibold text-ink-200 transition hover:bg-red-500/20 hover:text-red-400 disabled:opacity-60"
+                            title="Set QA/test Starting-page progress fraction (admin-only, this user only)"
                           >
                             Set
                           </button>
