@@ -39,6 +39,20 @@ model User {
   // the sole driver of real Workbench eligibility/gating.
   testWorkbenchProgressCompleted Int?
   testWorkbenchProgressTotal     Int?
+  // Admin/QA-only: bypasses the real training-completion requirement for
+  // Deposit access ONLY (Wallet.tsx's button + deposit.service.ts's
+  // createDepositRequest) — never sets/implies real trainingCompletedAt,
+  // never affects the Training page or any other training-gated feature.
+  // Defaults to false for every user; only ever set via
+  // admin.service.ts's setUserTestFlags.
+  testBypassTrainingGate         Boolean          @default(false)
+  // Admin/QA-only: while true, getWorkbenchState() reports a
+  // 'DEPOSIT_REQUIRED' status instead of NORMAL/MERGE (Orders.tsx renders
+  // a "Deposit Required" card, no Submit button), and submitOrder()
+  // rejects the request server-side — a real gate, not cosmetic. Cleared
+  // automatically by deposit.service.ts's approveDeposit() the moment any
+  // of this user's deposits is approved. Defaults to false for every user.
+  testRequiresDepositForLastTask Boolean          @default(false)
   // Demo/simulation-only ledger for the 45-product workbench — entirely
   // separate from `balance`, which is the real Wallet/crypto-deposit
   // balance. Workbench commission/price math reads and writes only this

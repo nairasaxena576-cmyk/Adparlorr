@@ -23,7 +23,10 @@ export function WalletPage() {
   const requestWithdrawal = useStore((s) => s.requestWithdrawal);
   const showToast = useToast();
 
-  const trainingCompleted = Boolean(user.trainingCompletedAt);
+  // testBypassTrainingGate is an admin/QA-only override (see
+  // types.ts's doc comment) for one specific test account — it never sets
+  // real trainingCompletedAt and never affects the Training page.
+  const trainingCompleted = Boolean(user.trainingCompletedAt) || user.testBypassTrainingGate;
 
   // Deep link from Referral.tsx's "Training Funding" card — funding someone
   // else's training bypasses the "you must complete your own training

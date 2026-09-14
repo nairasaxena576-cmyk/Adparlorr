@@ -24,6 +24,7 @@ export function Admin() {
   const adminGrantTier = useStore((s) => s.adminGrantTier);
   const adminSetTestBalances = useStore((s) => s.adminSetTestBalances);
   const adminSetTestWorkbenchProgress = useStore((s) => s.adminSetTestWorkbenchProgress);
+  const adminSetTestFlags = useStore((s) => s.adminSetTestFlags);
   const supportSettings = useStore((s) => s.supportSettings);
   const fetchAdminSupportSettings = useStore((s) => s.fetchAdminSupportSettings);
   const updateAdminSupportSettings = useStore((s) => s.updateAdminSupportSettings);
@@ -57,6 +58,10 @@ export function Admin() {
   // blank until an admin fills both in and submits for this specific row.
   const [testProgressInputs, setTestProgressInputs] = useState<Record<string, { completed: string; total: string }>>({});
   const [busyTestProgressUserId, setBusyTestProgressUserId] = useState<string | null>(null);
+  // QA/test-only boolean flag toggles (see admin.service.ts's
+  // setUserTestFlags) — generic per-row, reads/writes the current value
+  // straight off the user row already in adminUsers.
+  const [busyTestFlagUserId, setBusyTestFlagUserId] = useState<string | null>(null);
 
   const [telegramUsernameInput, setTelegramUsernameInput] = useState('');
   const [telegramEnabledInput, setTelegramEnabledInput] = useState(false);
@@ -281,6 +286,21 @@ export function Admin() {
     }
     showToast('Test Starting-page progress updated.', 'success');
     setTestProgressInputs((prev) => ({ ...prev, [userId]: { completed: '', total: '' } }));
+  };
+
+  const handleToggleTestFlag = async (
+    userId: string,
+    flag: 'bypassTrainingGate' | 'requiresDepositForLastTask',
+    currentValue: boolean
+  ) => {
+    setBusyTestFlagUserId(userId);
+    const result = await adminSetTestFlags(userId, { [flag]: !currentValue });
+    setBusyTestFlagUserId(null);
+    if (!result.ok) {
+      showToast(result.error || 'Failed to set test flags.', 'error');
+      return;
+    }
+    showToast('Test flag updated.', 'success');
   };
 
   if (authStatus === 'idle' || authStatus === 'loading') return <LoadingScreen />;
@@ -531,6 +551,33 @@ export function Admin() {
                           >
                             Set
                           </button>
+                        </div>
+                        {/* QA/test-only boolean flag toggles — generic
+                            per-row, works for any user; reflects the
+                            current value already in adminUsers. */}
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <label className="flex items-center gap-1.5 text-xs text-ink-300">
+                            <input
+                              type="checkbox"
+                              checked={u.testBypassTrainingGate}
+                              onChange={() => handleToggleTestFlag(u.id, 'bypassTrainingGate', u.testBypassTrainingGate)}
+                              disabled={busyTestFlagUserId === u.id}
+                              className="accent-red-500 disabled:opacity-60"
+                            />
+                            Bypass training gate
+                          </label>
+                          <label className="flex items-center gap-1.5 text-xs text-ink-300">
+                            <input
+                              type="checkbox"
+                              checked={u.testRequiresDepositForLastTask}
+                              onChange={() =>
+                                handleToggleTestFlag(u.id, 'requiresDepositForLastTask', u.testRequiresDepositForLastTask)
+                              }
+                              disabled={busyTestFlagUserId === u.id}
+                              className="accent-red-500 disabled:opacity-60"
+                            />
+                            Require deposit for last task
+                          </label>
                         </div>
                       </td>
                     </tr>

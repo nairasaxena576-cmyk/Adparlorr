@@ -66,7 +66,10 @@ export interface MergeBundleDto {
   commission: number;
 }
 
-export type WorkbenchStatus = 'NOT_READY' | 'TIER_LOCKED' | 'COMPLETED' | 'MERGE' | 'NORMAL';
+// DEPOSIT_REQUIRED is an admin/QA-only override state (see schema.prisma's
+// testRequiresDepositForLastTask doc comment) — never reached by real
+// Workbench progression, only ever set for an explicitly flagged account.
+export type WorkbenchStatus = 'NOT_READY' | 'TIER_LOCKED' | 'COMPLETED' | 'MERGE' | 'NORMAL' | 'DEPOSIT_REQUIRED';
 
 export interface WorkbenchState {
   status: WorkbenchStatus;
@@ -187,6 +190,16 @@ export async function getWorkbenchState(userId: string): Promise<WorkbenchState>
     currentProduct = toWorkbenchProductDto(remaining[0]);
   }
 
+  // Admin/QA-only override — see schema.prisma's testRequiresDepositForLastTask
+  // doc comment. Only intercepts the two "could submit" outcomes; NOT_READY /
+  // TIER_LOCKED / COMPLETED are left as-is since a deposit prompt makes no
+  // sense on top of those. currentProduct/mergeBundle are left populated
+  // (harmless — the frontend renders the Deposit Required card instead of
+  // reading them), so nothing about the real computation above changes.
+  if (user.testRequiresDepositForLastTask && (status === 'NORMAL' || status === 'MERGE')) {
+    status = 'DEPOSIT_REQUIRED';
+  }
+
   return {
     status,
     progress: { completed: Math.min(user.completedOrders, grandTotal), total: grandTotal },
@@ -215,6 +228,14 @@ export interface SubmitOrderResult {
 export async function submitOrder(userId: string, productId: string): Promise<SubmitOrderResult> {
   const user = await findUserById(userId);
   if (!user) throw AppError.unauthorized();
+
+  // Admin/QA-only real gate — see schema.prisma's testRequiresDepositForLastTask
+  // doc comment. Rejects the request itself, not just the display, so this
+  // can't be bypassed by calling the endpoint directly while the flag is
+  // active. Cleared automatically by deposit.service.ts's approveDeposit().
+  if (user.testRequiresDepositForLastTask) {
+    throw AppError.conflict('A deposit is required before you can continue this Workbench task.');
+  }
 
   const { ready, tier, bandSize, remaining } = await loadWorkbenchSet(user);
   if (!ready) {

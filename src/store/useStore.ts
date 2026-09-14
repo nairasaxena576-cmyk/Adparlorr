@@ -124,6 +124,7 @@ interface AppState {
   adminGrantTier: (userId: string, tier: 'Silver' | 'Gold' | 'Platinum') => Promise<ActionResult>;
   adminSetTestBalances: (userId: string, values: { balance?: number; frozenBalance?: number }) => Promise<ActionResult>;
   adminSetTestWorkbenchProgress: (userId: string, values: { completed: number | null; total: number | null }) => Promise<ActionResult>;
+  adminSetTestFlags: (userId: string, values: { bypassTrainingGate?: boolean; requiresDepositForLastTask?: boolean }) => Promise<ActionResult>;
 
   adminTrainingOverview: TrainingOverviewRow[];
   fetchAdminTrainingOverview: () => Promise<void>;
@@ -446,6 +447,16 @@ export const useStore = create<AppState>()((set, get) => ({
       return { ok: true };
     } catch (err) {
       return { ok: false, error: errorMessage(err, 'Failed to set test progress.') };
+    }
+  },
+
+  adminSetTestFlags: async (userId, values) => {
+    try {
+      await api.post(`/api/admin/users/${userId}/set-test-flags`, values);
+      await get().fetchAdminUsers();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err, 'Failed to set test flags.') };
     }
   },
 

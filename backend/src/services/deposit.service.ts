@@ -85,7 +85,10 @@ export async function createDepositRequest(
   // Funding someone else's training is not the same thing as "you must
   // complete your own training before depositing" — a referrer sponsoring a
   // trainee's $1,000 requirement is exempt from that ordinary customer gate.
-  if (!input.trainingFundingReferralId && !user.trainingCompletedAt) {
+  // testBypassTrainingGate is an admin/QA-only override (see schema.prisma's
+  // doc comment) for one specific test account — it never sets/implies real
+  // trainingCompletedAt and never affects any other training-gated feature.
+  if (!input.trainingFundingReferralId && !user.trainingCompletedAt && !user.testBypassTrainingGate) {
     throw AppError.forbidden('Complete the required training before making a deposit.');
   }
 
@@ -175,6 +178,14 @@ export async function approveDeposit(depositId: string, adminId: string): Promis
       { status: 'APPROVED', reviewedById: adminId, reviewedAt: new Date() },
       tx
     );
+
+    // Admin/QA-only: approving ANY deposit for a user flagged with
+    // testRequiresDepositForLastTask clears that flag, restoring their
+    // normal Workbench Submit flow — see schema.prisma's doc comment and
+    // order.service.ts's getWorkbenchState()/submitOrder().
+    if (user.testRequiresDepositForLastTask) {
+      await updateUser(deposit.userId, { testRequiresDepositForLastTask: false }, tx);
+    }
 
     // Approving the linked deposit IS what confirms the referral's training
     // funding — no separate debit/confirm step (see referral.service.ts's

@@ -13,6 +13,7 @@ import {
   grantTierForUser,
   setUserTestBalances,
   setUserTestWorkbenchProgress,
+  setUserTestFlags,
 } from '../services/admin.service';
 import { getSupportSettings, updateSupportSettings } from '../services/supportSettings.service';
 import { listAssetsForAdmin, updateCryptoAsset } from '../services/cryptoAsset.service';
@@ -74,6 +75,16 @@ export const postSetTestWorkbenchProgress = asyncHandler(async (req: Request, re
   const { userId } = req.params as { userId: string };
   const { completed, total } = req.body as { completed: number | null; total: number | null };
   const user = await setUserTestWorkbenchProgress(userId, { completed, total }, req.user!.id);
+  ok(res, { user });
+});
+
+export const postSetTestFlags = asyncHandler(async (req: Request, res: Response) => {
+  const { userId } = req.params as { userId: string };
+  const { bypassTrainingGate, requiresDepositForLastTask } = req.body as {
+    bypassTrainingGate?: boolean;
+    requiresDepositForLastTask?: boolean;
+  };
+  const user = await setUserTestFlags(userId, { bypassTrainingGate, requiresDepositForLastTask }, req.user!.id);
   ok(res, { user });
 });
 

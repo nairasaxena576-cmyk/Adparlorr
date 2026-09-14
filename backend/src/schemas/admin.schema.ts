@@ -60,3 +60,18 @@ export const setTestWorkbenchProgressBodySchema = z.object({
 }).refine((data) => (data.completed === null) === (data.total === null), {
   message: 'completed and total must both be null (clear) or both be numbers (set) together.',
 });
+
+export const setTestFlagsParamsSchema = z.object({
+  userId: z.string().uuid('A valid userId is required.'),
+});
+
+// Admin/QA-only boolean overrides — see admin.service.ts's setUserTestFlags
+// and schema.prisma's doc comments for exactly what each flag does.
+export const setTestFlagsBodySchema = z
+  .object({
+    bypassTrainingGate: z.boolean().optional(),
+    requiresDepositForLastTask: z.boolean().optional(),
+  })
+  .refine((data) => data.bypassTrainingGate !== undefined || data.requiresDepositForLastTask !== undefined, {
+    message: 'At least one of bypassTrainingGate or requiresDepositForLastTask must be provided.',
+  });

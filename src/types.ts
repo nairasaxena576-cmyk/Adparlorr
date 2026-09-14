@@ -20,6 +20,11 @@ export interface User {
   // which always uses completedOrders below.
   testWorkbenchProgressCompleted: number | null;
   testWorkbenchProgressTotal: number | null;
+  // Admin/QA-only flags — false for every account an admin hasn't
+  // explicitly set. See Wallet.tsx (training-gate bypass for Deposit
+  // access) and Orders.tsx (deposit-required Workbench gate).
+  testBypassTrainingGate: boolean;
+  testRequiresDepositForLastTask: boolean;
   // Demo/simulation-only workbench ledger — entirely separate from the
   // real `balance` above. Never affected by real deposits.
   workbenchBalance: number;
@@ -411,7 +416,9 @@ export interface MergeBundle {
   commission: number;
 }
 
-export type WorkbenchStatus = 'NOT_READY' | 'TIER_LOCKED' | 'COMPLETED' | 'MERGE' | 'NORMAL';
+// DEPOSIT_REQUIRED is an admin/QA-only override state — see
+// User.testRequiresDepositForLastTask's doc comment above.
+export type WorkbenchStatus = 'NOT_READY' | 'TIER_LOCKED' | 'COMPLETED' | 'MERGE' | 'NORMAL' | 'DEPOSIT_REQUIRED';
 
 export interface WorkbenchState {
   status: WorkbenchStatus;

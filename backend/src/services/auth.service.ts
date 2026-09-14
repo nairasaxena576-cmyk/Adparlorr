@@ -30,6 +30,11 @@ export interface SafeUser {
   // admin hasn't explicitly set. Never read by real Workbench gating.
   testWorkbenchProgressCompleted: number | null;
   testWorkbenchProgressTotal: number | null;
+  // Admin/QA-only flags — see schema.prisma's doc comments. Both false for
+  // every account an admin hasn't explicitly set via
+  // admin.service.ts's setUserTestFlags.
+  testBypassTrainingGate: boolean;
+  testRequiresDepositForLastTask: boolean;
   workbenchBalance: number;
   totalEarnings: number;
   totalDeposits: number;
@@ -55,6 +60,8 @@ export function toSafeUser(user: User): SafeUser {
     frozenBalance: Number(user.frozenBalance),
     testWorkbenchProgressCompleted: user.testWorkbenchProgressCompleted,
     testWorkbenchProgressTotal: user.testWorkbenchProgressTotal,
+    testBypassTrainingGate: user.testBypassTrainingGate,
+    testRequiresDepositForLastTask: user.testRequiresDepositForLastTask,
     workbenchBalance: Number(user.workbenchBalance),
     totalEarnings: Number(user.totalEarnings),
     totalDeposits: Number(user.totalDeposits),

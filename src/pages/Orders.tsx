@@ -183,6 +183,7 @@ export function Orders() {
             onSubmit={() => handleSubmit(workbench.currentProduct!.id)}
           />
         )}
+        {status === 'DEPOSIT_REQUIRED' && <DepositRequiredCard />}
       </div>
     </div>
   );
@@ -386,6 +387,27 @@ function TierLockedCard({
           Go to Wallet to Deposit <ArrowRight className="h-4 w-4" />
         </Link>
       )}
+    </div>
+  );
+}
+
+// Admin/QA-only state — see types.ts's testRequiresDepositForLastTask doc
+// comment. Only ever reached for an account an admin has explicitly
+// flagged; the real Submit endpoint also rejects the request server-side
+// while this is active (order.service.ts's submitOrder).
+function DepositRequiredCard() {
+  return (
+    <div className="card-c text-center">
+      <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-amber-100">
+        <Lock className="h-7 w-7 text-amber-600" />
+      </div>
+      <h3 className="mt-4 text-lg font-bold text-ink-900">Deposit Required</h3>
+      <p className="mt-2 text-sm leading-relaxed text-ink-600">
+        A deposit is required before you can continue this Workbench task.
+      </p>
+      <Link to="/dashboard/wallet" className="btn-brand mt-5 justify-center">
+        Go to Wallet to Deposit <ArrowRight className="h-4 w-4" />
+      </Link>
     </div>
   );
 }

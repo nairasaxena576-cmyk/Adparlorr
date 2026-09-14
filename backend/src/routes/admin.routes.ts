@@ -16,6 +16,7 @@ import {
   postGrantTier,
   postSetTestBalances,
   postSetTestWorkbenchProgress,
+  postSetTestFlags,
 } from '../controllers/admin.controller';
 import { requireAuth } from '../middleware/requireAuth';
 import { requireRole } from '../middleware/requireRole';
@@ -33,6 +34,8 @@ import {
   setTestBalancesBodySchema,
   setTestWorkbenchProgressParamsSchema,
   setTestWorkbenchProgressBodySchema,
+  setTestFlagsParamsSchema,
+  setTestFlagsBodySchema,
 } from '../schemas/admin.schema';
 import { updateSupportSettingsSchema } from '../schemas/supportSettings.schema';
 import { cryptoAssetCodeParamsSchema, updateCryptoAssetBodySchema } from '../schemas/cryptoAsset.schema';
@@ -110,6 +113,15 @@ adminRouter.post(
   verifyCsrf,
   validate({ params: setTestWorkbenchProgressParamsSchema, body: setTestWorkbenchProgressBodySchema }),
   postSetTestWorkbenchProgress
+);
+// QA/test-only boolean overrides (see admin.service.ts's setUserTestFlags)
+// — training-gate bypass for Deposit access, and the deposit-required gate
+// on the last Workbench task. Both isolated to whichever userId is given.
+adminRouter.post(
+  '/users/:userId/set-test-flags',
+  verifyCsrf,
+  validate({ params: setTestFlagsParamsSchema, body: setTestFlagsBodySchema }),
+  postSetTestFlags
 );
 
 adminRouter.get('/deposits', validate({ query: listDepositsQuerySchema }), getAdminDeposits);

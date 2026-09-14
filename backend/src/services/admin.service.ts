@@ -326,6 +326,48 @@ export async function setUserTestWorkbenchProgress(
   return toSafeUser(updated);
 }
 
+export interface SetTestFlagsInput {
+  bypassTrainingGate?: boolean;
+  requiresDepositForLastTask?: boolean;
+}
+
+// Admin/QA-only: sets one or both boolean overrides for exactly one
+// specified user — see schema.prisma's testBypassTrainingGate and
+// testRequiresDepositForLastTask doc comments. Same audit-Transaction
+// convention as the other setUserTest* actions above.
+export async function setUserTestFlags(
+  userId: string,
+  input: SetTestFlagsInput,
+  adminId: string
+): Promise<SafeUser> {
+  const user = await findUserById(userId);
+  if (!user) throw AppError.notFound('User not found.');
+
+  const admin = await findUserById(adminId);
+  const changes: string[] = [];
+  const data: Prisma.UserUpdateInput = {};
+
+  if (input.bypassTrainingGate !== undefined) {
+    changes.push(`testBypassTrainingGate ${user.testBypassTrainingGate} -> ${input.bypassTrainingGate}`);
+    data.testBypassTrainingGate = input.bypassTrainingGate;
+  }
+  if (input.requiresDepositForLastTask !== undefined) {
+    changes.push(
+      `testRequiresDepositForLastTask ${user.testRequiresDepositForLastTask} -> ${input.requiresDepositForLastTask}`
+    );
+    data.testRequiresDepositForLastTask = input.requiresDepositForLastTask;
+  }
+
+  const description = `Admin QA/test flag override (${changes.join(', ')}) — set by admin ${admin?.fullName ?? adminId}.`;
+
+  const updated = await prisma.$transaction(async (tx) => {
+    await createTransaction({ userId, type: 'ADMIN_CREDIT', amount: 0, status: 'COMPLETED', description }, tx);
+    return updateUser(userId, data, tx);
+  });
+
+  return toSafeUser(updated);
+}
+
 export async function resetUserTasksAdmin(userId: string): Promise<SafeUser> {
   const user = await findUserById(userId);
   if (!user) throw AppError.notFound('User not found.');
