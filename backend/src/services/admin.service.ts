@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import { listAllUsers, findUserById, updateUser } from '../repositories/user.repository';
@@ -233,6 +234,52 @@ export async function grantTierForUser(userId: string, tier: Tier, adminId: stri
   const updated = await prisma.$transaction(async (tx) => {
     await createTransaction({ userId, type: 'ADMIN_CREDIT', amount: 0, status: 'COMPLETED', description }, tx);
     return updateUser(userId, { manualTier: tier, manualTierGrantedAt: new Date() }, tx);
+  });
+
+  return toSafeUser(updated);
+}
+
+export interface SetTestBalancesInput {
+  balance?: number;
+  frozenBalance?: number;
+}
+
+// Admin/QA-only: directly SETS (not increments) `balance` and/or the
+// display-only `frozenBalance` for exactly one specified user — a
+// deliberately separate action from creditUserSimulated above, whose
+// .positive()-only validation (see admin.schema.ts) stays untouched for
+// every real credit. This exists so one specific test account can be put
+// into an arbitrary balance display state (including negative) for QA,
+// without weakening real-credit validation for anyone else and without
+// any per-account/email code branch — the caller supplies whichever
+// userId they want. Every change is still recorded as an auditable
+// zero-amount Transaction row, same convention as grantTierForUser above.
+export async function setUserTestBalances(
+  userId: string,
+  input: SetTestBalancesInput,
+  adminId: string
+): Promise<SafeUser> {
+  const user = await findUserById(userId);
+  if (!user) throw AppError.notFound('User not found.');
+
+  const admin = await findUserById(adminId);
+  const changes: string[] = [];
+  const data: Prisma.UserUpdateInput = {};
+
+  if (input.balance !== undefined) {
+    changes.push(`balance $${Number(user.balance).toFixed(2)} -> $${input.balance.toFixed(2)}`);
+    data.balance = input.balance;
+  }
+  if (input.frozenBalance !== undefined) {
+    changes.push(`frozenBalance $${Number(user.frozenBalance).toFixed(2)} -> $${input.frozenBalance.toFixed(2)}`);
+    data.frozenBalance = input.frozenBalance;
+  }
+
+  const description = `Admin QA/test balance override (${changes.join(', ')}) — set by admin ${admin?.fullName ?? adminId}.`;
+
+  const updated = await prisma.$transaction(async (tx) => {
+    await createTransaction({ userId, type: 'ADMIN_CREDIT', amount: 0, status: 'COMPLETED', description }, tx);
+    return updateUser(userId, data, tx);
   });
 
   return toSafeUser(updated);

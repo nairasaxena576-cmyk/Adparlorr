@@ -27,3 +27,20 @@ export const grantTierParamsSchema = z.object({
 export const grantTierBodySchema = z.object({
   tier: z.enum(['Silver', 'Gold', 'Platinum']),
 });
+
+export const setTestBalancesParamsSchema = z.object({
+  userId: z.string().uuid('A valid userId is required.'),
+});
+
+// Deliberately allows any finite number, including negative — this is a
+// distinct, explicitly-named QA/test action (see admin.service.ts's
+// setUserTestBalances), not the real-credit endpoint above, whose
+// .positive() constraint stays untouched for every normal admin credit.
+export const setTestBalancesBodySchema = z
+  .object({
+    balance: z.coerce.number().finite().optional(),
+    frozenBalance: z.coerce.number().finite().optional(),
+  })
+  .refine((data) => data.balance !== undefined || data.frozenBalance !== undefined, {
+    message: 'At least one of balance or frozenBalance must be provided.',
+  });

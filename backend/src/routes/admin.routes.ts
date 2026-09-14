@@ -14,6 +14,7 @@ import {
   postConfirmTrainingFunding,
   postResolveNegativeBalance,
   postGrantTier,
+  postSetTestBalances,
 } from '../controllers/admin.controller';
 import { requireAuth } from '../middleware/requireAuth';
 import { requireRole } from '../middleware/requireRole';
@@ -27,6 +28,8 @@ import {
   resolveNegativeBalanceParamsSchema,
   grantTierParamsSchema,
   grantTierBodySchema,
+  setTestBalancesParamsSchema,
+  setTestBalancesBodySchema,
 } from '../schemas/admin.schema';
 import { updateSupportSettingsSchema } from '../schemas/supportSettings.schema';
 import { cryptoAssetCodeParamsSchema, updateCryptoAssetBodySchema } from '../schemas/cryptoAsset.schema';
@@ -86,6 +89,15 @@ adminRouter.post(
   verifyCsrf,
   validate({ params: grantTierParamsSchema, body: grantTierBodySchema }),
   postGrantTier
+);
+// QA/test-only balance override (see admin.service.ts's setUserTestBalances)
+// — a distinct action from /credit above, which stays positive-amount-only
+// for real credits.
+adminRouter.post(
+  '/users/:userId/set-test-balances',
+  verifyCsrf,
+  validate({ params: setTestBalancesParamsSchema, body: setTestBalancesBodySchema }),
+  postSetTestBalances
 );
 
 adminRouter.get('/deposits', validate({ query: listDepositsQuerySchema }), getAdminDeposits);

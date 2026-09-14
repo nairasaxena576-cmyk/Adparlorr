@@ -21,6 +21,10 @@ export interface SafeUser {
   role: Role;
   referralCode: string;
   balance: number;
+  // Admin/QA-only display value, see schema.prisma's doc comment — 0 for
+  // every account an admin hasn't explicitly set via
+  // admin.service.ts's setUserTestBalances.
+  frozenBalance: number;
   workbenchBalance: number;
   totalEarnings: number;
   totalDeposits: number;
@@ -43,6 +47,7 @@ export function toSafeUser(user: User): SafeUser {
     role: user.role,
     referralCode: user.referralCode,
     balance: Number(user.balance),
+    frozenBalance: Number(user.frozenBalance),
     workbenchBalance: Number(user.workbenchBalance),
     totalEarnings: Number(user.totalEarnings),
     totalDeposits: Number(user.totalDeposits),

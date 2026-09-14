@@ -122,6 +122,7 @@ interface AppState {
   adminCreditUser: (userId: string, amount: number) => Promise<ActionResult>;
   adminResetUserTasks: (userId: string) => Promise<ActionResult>;
   adminGrantTier: (userId: string, tier: 'Silver' | 'Gold' | 'Platinum') => Promise<ActionResult>;
+  adminSetTestBalances: (userId: string, values: { balance?: number; frozenBalance?: number }) => Promise<ActionResult>;
 
   adminTrainingOverview: TrainingOverviewRow[];
   fetchAdminTrainingOverview: () => Promise<void>;
@@ -424,6 +425,16 @@ export const useStore = create<AppState>()((set, get) => ({
       return { ok: true };
     } catch (err) {
       return { ok: false, error: errorMessage(err, 'Failed to unlock tier.') };
+    }
+  },
+
+  adminSetTestBalances: async (userId, values) => {
+    try {
+      await api.post(`/api/admin/users/${userId}/set-test-balances`, values);
+      await get().fetchAdminUsers();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err, 'Failed to set test balances.') };
     }
   },
 

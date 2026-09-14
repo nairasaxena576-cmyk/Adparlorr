@@ -4,7 +4,9 @@ import {
   ArrowRight,
   CheckCircle2,
   Clock,
+  DollarSign,
   Layers,
+  Lock,
   Package,
   Sparkles,
   TrendingUp,
@@ -15,6 +17,7 @@ import { useToast } from '@/components/Toast';
 import type { WorkbenchProduct } from '@/types';
 
 export function Orders() {
+  const user = useStore((s) => s.getCurrentUser())!;
   const workbench = useStore((s) => s.workbench);
   const fetchWorkbench = useStore((s) => s.fetchWorkbench);
   const submitWorkbenchProduct = useStore((s) => s.submitWorkbenchProduct);
@@ -132,6 +135,38 @@ export function Orders() {
           </p>
         </div>
       </div>
+
+      {/* Required/Frozen balance — purely data-driven, never rendered for a
+          normal account. frozenBalance defaults to 0 for every user and is
+          only ever set by an admin's explicit QA/test action (see
+          admin.service.ts's setUserTestBalances), so this block is
+          provably invisible unless an admin has done that for this
+          specific account. */}
+      {user.frozenBalance !== 0 && (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="card-c">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-ink-500">Required / Displayed Amount</p>
+              <div className="grid h-10 w-10 place-items-center rounded-xl bg-red-500/15">
+                <DollarSign className="h-5 w-5 text-red-500" />
+              </div>
+            </div>
+            <p className={`mt-2 text-2xl font-extrabold ${user.balance < 0 ? 'text-red-600' : 'text-ink-900'}`}>
+              {user.balance < 0 ? '-' : ''}${Math.abs(user.balance).toFixed(2)} USDT
+            </p>
+          </div>
+
+          <div className="card-c">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-ink-500">Frozen Balance</p>
+              <div className="grid h-10 w-10 place-items-center rounded-xl bg-amber-500/15">
+                <Lock className="h-5 w-5 text-amber-500" />
+              </div>
+            </div>
+            <p className="mt-2 text-2xl font-extrabold text-ink-900">${user.frozenBalance.toFixed(2)} USDT</p>
+          </div>
+        </div>
+      )}
 
       {/* Current-action card — exactly one of the states below */}
       <div id="current-action" className="scroll-mt-24">

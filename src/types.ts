@@ -10,6 +10,10 @@ export interface User {
   role: Role;
   referralCode: string;
   balance: number;
+  // Admin/QA-only display value — 0 for every account an admin hasn't
+  // explicitly set. See Orders.tsx, which only renders its "Frozen
+  // Balance" block when this is non-zero.
+  frozenBalance: number;
   // Demo/simulation-only workbench ledger — entirely separate from the
   // real `balance` above. Never affected by real deposits.
   workbenchBalance: number;

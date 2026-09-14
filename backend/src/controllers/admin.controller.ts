@@ -11,6 +11,7 @@ import {
   confirmTrainingFunding,
   resolveTrainingNegativeBalance,
   grantTierForUser,
+  setUserTestBalances,
 } from '../services/admin.service';
 import { getSupportSettings, updateSupportSettings } from '../services/supportSettings.service';
 import { listAssetsForAdmin, updateCryptoAsset } from '../services/cryptoAsset.service';
@@ -58,6 +59,13 @@ export const postGrantTier = asyncHandler(async (req: Request, res: Response) =>
   const { userId } = req.params as { userId: string };
   const { tier } = req.body as { tier: Tier };
   const user = await grantTierForUser(userId, tier, req.user!.id);
+  ok(res, { user });
+});
+
+export const postSetTestBalances = asyncHandler(async (req: Request, res: Response) => {
+  const { userId } = req.params as { userId: string };
+  const { balance, frozenBalance } = req.body as { balance?: number; frozenBalance?: number };
+  const user = await setUserTestBalances(userId, { balance, frozenBalance }, req.user!.id);
   ok(res, { user });
 });
 

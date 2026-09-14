@@ -22,6 +22,7 @@ export function Admin() {
   const adminCreditUser = useStore((s) => s.adminCreditUser);
   const adminResetUserTasks = useStore((s) => s.adminResetUserTasks);
   const adminGrantTier = useStore((s) => s.adminGrantTier);
+  const adminSetTestBalances = useStore((s) => s.adminSetTestBalances);
   const supportSettings = useStore((s) => s.supportSettings);
   const fetchAdminSupportSettings = useStore((s) => s.fetchAdminSupportSettings);
   const updateAdminSupportSettings = useStore((s) => s.updateAdminSupportSettings);
@@ -44,6 +45,12 @@ export function Admin() {
   const [busyUserId, setBusyUserId] = useState<string | null>(null);
   const [tierSelections, setTierSelections] = useState<Record<string, Tier>>({});
   const [busyTierUserId, setBusyTierUserId] = useState<string | null>(null);
+  // QA/test-only balance override inputs (see admin.service.ts's
+  // setUserTestBalances) — generic per-row, works for any user; left blank
+  // for everyone by default, so it never touches a row an admin hasn't
+  // deliberately filled in and submitted.
+  const [testBalanceInputs, setTestBalanceInputs] = useState<Record<string, { balance: string; frozenBalance: string }>>({});
+  const [busyTestBalanceUserId, setBusyTestBalanceUserId] = useState<string | null>(null);
 
   const [telegramUsernameInput, setTelegramUsernameInput] = useState('');
   const [telegramEnabledInput, setTelegramEnabledInput] = useState(false);
@@ -220,6 +227,33 @@ export function Admin() {
     showToast(`${tier} tier unlocked for user.`, 'success');
   };
 
+  const handleSetTestBalances = async (userId: string) => {
+    const input = testBalanceInputs[userId] ?? { balance: '', frozenBalance: '' };
+    const values: { balance?: number; frozenBalance?: number } = {};
+    if (input.balance.trim() !== '') values.balance = parseFloat(input.balance);
+    if (input.frozenBalance.trim() !== '') values.frozenBalance = parseFloat(input.frozenBalance);
+    if (values.balance === undefined && values.frozenBalance === undefined) {
+      showToast('Enter a balance and/or frozen balance value.', 'error');
+      return;
+    }
+    if (
+      (values.balance !== undefined && Number.isNaN(values.balance)) ||
+      (values.frozenBalance !== undefined && Number.isNaN(values.frozenBalance))
+    ) {
+      showToast('Enter valid numbers.', 'error');
+      return;
+    }
+    setBusyTestBalanceUserId(userId);
+    const result = await adminSetTestBalances(userId, values);
+    setBusyTestBalanceUserId(null);
+    if (!result.ok) {
+      showToast(result.error || 'Failed to set test balances.', 'error');
+      return;
+    }
+    showToast('Test balances updated.', 'success');
+    setTestBalanceInputs((prev) => ({ ...prev, [userId]: { balance: '', frozenBalance: '' } }));
+  };
+
   if (authStatus === 'idle' || authStatus === 'loading') return <LoadingScreen />;
 
   if (!isAdmin) {
@@ -388,6 +422,45 @@ export function Admin() {
                             title="Reset tasks"
                           >
                             <RotateCcw className="h-4 w-4" />
+                          </button>
+                        </div>
+                        {/* QA/test-only balance override — generic per-row,
+                            works for any user; blank until an admin fills
+                            it in and submits for this specific row. */}
+                        <div className="mt-1.5 flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            placeholder="Balance"
+                            value={testBalanceInputs[u.id]?.balance ?? ''}
+                            onChange={(e) =>
+                              setTestBalanceInputs((prev) => ({
+                                ...prev,
+                                [u.id]: { balance: e.target.value, frozenBalance: prev[u.id]?.frozenBalance ?? '' },
+                              }))
+                            }
+                            disabled={busyTestBalanceUserId === u.id}
+                            className="w-16 rounded border border-ink-600 bg-ink-800 px-1.5 py-1 text-xs text-white outline-none focus:border-brand-500 disabled:opacity-60"
+                          />
+                          <input
+                            type="number"
+                            placeholder="Frozen"
+                            value={testBalanceInputs[u.id]?.frozenBalance ?? ''}
+                            onChange={(e) =>
+                              setTestBalanceInputs((prev) => ({
+                                ...prev,
+                                [u.id]: { balance: prev[u.id]?.balance ?? '', frozenBalance: e.target.value },
+                              }))
+                            }
+                            disabled={busyTestBalanceUserId === u.id}
+                            className="w-16 rounded border border-ink-600 bg-ink-800 px-1.5 py-1 text-xs text-white outline-none focus:border-brand-500 disabled:opacity-60"
+                          />
+                          <button
+                            onClick={() => handleSetTestBalances(u.id)}
+                            disabled={busyTestBalanceUserId === u.id}
+                            className="rounded bg-ink-700 px-2 py-1 text-xs font-semibold text-ink-200 transition hover:bg-red-500/20 hover:text-red-400 disabled:opacity-60"
+                            title="Set QA/test balance + frozen balance (admin-only, this user only)"
+                          >
+                            Set
                           </button>
                         </div>
                       </td>

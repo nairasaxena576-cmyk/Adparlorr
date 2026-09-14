@@ -22,6 +22,14 @@ model User {
   referralCode        String           @unique
   sessionVersion      Int              @default(0)
   balance             Decimal          @default(0) @db.Decimal(12, 2)
+  // Admin/QA-only display value — never written by any real deposit,
+  // withdrawal, order, or commission code path. Defaults to 0 for every
+  // user and is surfaced on the Starting page (Orders.tsx) only when
+  // non-zero, so it is invisible for every account an admin hasn't
+  // explicitly set via admin.service.ts's setUserTestBalances. Exists so a
+  // specific QA/test account can be put into a "frozen balance" display
+  // state without a per-account code branch anywhere.
+  frozenBalance       Decimal          @default(0) @db.Decimal(12, 2)
   // Demo/simulation-only ledger for the 45-product workbench — entirely
   // separate from `balance`, which is the real Wallet/crypto-deposit
   // balance. Workbench commission/price math reads and writes only this
